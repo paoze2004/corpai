@@ -8,7 +8,7 @@ import pytest
 import sys
 import os
 
-# 确保 SmartVoyage 模块可以导入
+# 确保 CorpAI 模块可以导入
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
@@ -49,7 +49,7 @@ def database_available():
     """检查数据库是否可用"""
     try:
         import mysql.connector
-        from SmartVoyage.config import Config
+        from CorpAI.config import Config
         conf = Config()
         conn = mysql.connector.connect(
             host=conf.host,
@@ -68,7 +68,7 @@ def milvus_available():
     """检查 Milvus 是否可用"""
     try:
         from pymilvus import connections
-        from SmartVoyage.config import Config
+        from CorpAI.config import Config
         conf = Config()
         connections.connect(alias="default",
                           host=conf.milvus_host,

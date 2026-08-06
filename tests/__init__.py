@@ -1,5 +1,5 @@
 """
-SmartVoyage 测试包
+CorpAI 测试包
 
 测试目录结构：
 ├── conftest.py          # pytest 配置和夹具
@@ -10,7 +10,7 @@ SmartVoyage 测试包
 运行测试：
 
 1. 运行 MCP 服务测试（需要数据库，不需要启动服务器）：
-   cd SmartVoyage
+   cd CorpAI
    python -m pytest tests/test_mcp_services.py -v
 
 2. 运行 Agent 服务测试（需要 MCP 和 A2A 服务器运行）：

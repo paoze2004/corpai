@@ -34,13 +34,34 @@ Agent 服务集成测试模块
 import unittest
 import sys
 import os
+import socket
 
-# 确保能导入 SmartVoyage 模块
+# 确保能导入 CorpAI 模块
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from python_a2a import A2AClient, TaskState
 
 
+def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
+    """检测 TCP 端口是否可达（带超时，不会阻塞测试）"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+
+# 各 A2A 服务运行端口
+A2A_WEATHER_PORT = 5005
+A2A_TICKET_PORT = 5006
+A2A_TRIP_PORT = 5007
+
+
+@unittest.skipUnless(_port_open("127.0.0.1", A2A_WEATHER_PORT),
+                         f"天气 A2A 服务 (127.0.0.1:{A2A_WEATHER_PORT}) 未启动，跳过")
 class TestWeatherAgent(unittest.TestCase):
     """测试天气查询 Agent"""
 
@@ -123,6 +144,8 @@ class TestWeatherAgent(unittest.TestCase):
                     self.assertIsInstance(text, str)
 
 
+@unittest.skipUnless(_port_open("127.0.0.1", A2A_TICKET_PORT),
+                         f"票务 A2A 服务 (127.0.0.1:{A2A_TICKET_PORT}) 未启动，跳过")
 class TestTicketAgent(unittest.TestCase):
     """测试票务 Agent"""
 
@@ -213,6 +236,8 @@ class TestTicketAgent(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+@unittest.skipUnless(_port_open("127.0.0.1", A2A_TRIP_PORT),
+                         f"行程 A2A 服务 (127.0.0.1:{A2A_TRIP_PORT}) 未启动，跳过")
 class TestTripAgent(unittest.TestCase):
     """测试行程管家 Agent"""
 
@@ -318,6 +343,8 @@ class TestTripAgent(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+@unittest.skipUnless(_port_open("127.0.0.1", A2A_WEATHER_PORT),
+                         f"天气 A2A 服务未启动，跳过")
 class TestAgentCard(unittest.TestCase):
     """测试 Agent Card 注册和元数据"""
 
@@ -341,6 +368,8 @@ class TestAgentCard(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+@unittest.skipUnless(any(_port_open("127.0.0.1", p) for p in (A2A_WEATHER_PORT, A2A_TICKET_PORT, A2A_TRIP_PORT)),
+                         "任意 A2A 服务未启动，跳过")
 class TestAgentErrorHandling(unittest.TestCase):
     """测试 Agent 错误处理"""
 

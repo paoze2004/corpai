@@ -1,4 +1,8 @@
-# SmartVoyage - 智能旅游助手
+# CorpAI - 智能旅游助手
+
+> ⚠️ **项目转型中**:本项目正在从单一旅游助手重构为**企业 AI Copilot 平台**(多 Agent 中台)。详见 `docs/REFACTOR_PLAN.md` 与 `CLAUDE.md`。
+>
+> 当前 Phase: **0 (稳定基线)**。业务代码未动,只清理 dead code + 修文档。
 
 基于大模型 + MCP（Model Context Protocol）的智能旅游助手系统，支持天气查询、票务查询（火车票/机票/演唱会）、旅游团语义推荐等功能。
 
@@ -11,31 +15,57 @@
 | Milvus | 向量数据库，用于旅游团 RAG 语义检索 |
 | FastMCP (python_a2a) | MCP 工具服务框架 |
 | uvicorn | ASGI 服务器 |
-| Qwen (DashScope) | 大模型 + Embedding API |
+| MiniMax | 大模型 + Embedding API(`embo-01`,1536 维) |
 | 和风天气 API | 天气数据源 |
 | schedule | 定时任务调度 |
 
 ## 项目结构
 
 ```
-SmartVoyage/
-├── config.py                     # 全局配置（大模型、数据库、API、意图路由）
-├── create_logger.py              # 日志模块
-├── a2a_server/                   # A2A 子代理服务（通过 A2A 协议与主助手通信）
-│   ├── weather_server.py         # 天气查询 Agent（端口 5005，LangChain Agent + MCP Tools）
-│   └── ticket_server.py          # 票务查询 Agent（端口 5006，LangChain Agent + MCP Tools）
-├── mcp_server/                   # MCP 工具服务
-│   ├── mcp_weather_server.py     # 天气查询 MCP Server（端口 8002）
-│   └── mcp_ticket_server.py      # 票务查询 MCP Server（端口 8001）
-├── sql/                          # 数据库相关
-│   ├── create_all_tables.sql     # 全量建表脚本
-│   ├── insert_june01_data.sql    # 6月1日票务及租车/保险初始数据
-│   └── init_tour_group_rag.py    # 旅游团 RAG 初始化（Milvus 向量入库）
-├── utils/                        # 工具模块
-│   ├── format.py                 # JSON 编码器（date/Decimal 类型处理）
-│   └── spider_weather.py         # 天气数据爬虫（和风天气 API + 定时更新）
-├── test_weather_agent.py         # 天气 Agent 测试脚本
-└── logs/                         # 日志文件目录
+CorpAI/                          ← 项目根
+├── pyproject.toml                    # 依赖声明（pyproject.toml + uv.lock 是事实来源）
+├── uv.lock                           # 精确版本锁
+├── Makefile                          # 常用命令入口（make help 查看）
+├── README.md
+├── CorpAI/                      ← Python 包（业务代码）
+│   ├── __init__.py
+│   ├── config.py                     # 全局配置（大模型、数据库、API）
+│   ├── logging.py                    # 日志模块
+│   ├── api/                          # FastAPI 后端
+│   │   ├── __init__.py
+│   │   └── app.py                    # 端口 8080
+│   ├── core/                         # 核心业务逻辑
+│   │   ├── __init__.py
+│   │   ├── chat.py                   # ChatService（意图识别 + ReAct 编排）
+│   │   ├── memory.py                 # 对话记忆
+│   │   └── prompts.py                # 提示模板
+│   ├── agents/                       # A2A 智能体层（独立进程，对外 A2A 协议）
+│   │   ├── __init__.py
+│   │   ├── weather.py                # 端口 5005
+│   │   ├── ticket.py                 # 端口 5006
+│   │   └── trip.py                   # 端口 5007
+│   ├── tools/                        # MCP 工具层（暴露结构化工具）
+│   │   ├── __init__.py
+│   │   ├── weather.py                # 端口 8002
+│   │   ├── ticket.py                 # 端口 8001
+│   │   └── trip.py                   # 端口 8003
+│   ├── utils/                        # 通用工具
+│   │   ├── __init__.py
+│   │   ├── format.py                 # JSON 编码器
+│   │   └── weather_crawler.py        # 天气数据爬虫
+│   └── static/                       # 前端静态资源
+├── tests/                            # pytest 测试
+│   ├── conftest.py                   # pytest 配置和 fixtures
+│   ├── test_mcp_servers.py           # MCP 服务测试（零依赖 + DB 集成）
+│   ├── test_mcp_services.py          # MCP 业务服务测试
+│   ├── test_agent_services.py        # Agent 端到端测试
+│   └── test_*_agent.py               # 各 Agent 单测(manual style)
+├── scripts/                          # 一次性脚本（数据初始化等）
+│   └── init_tour_group_rag.py        # 旅游团 RAG 数据初始化
+├── sql/                              # 数据库脚本（仅 .sql 文件）
+│   ├── create_all_tables.sql
+│   └── insert_june01_data.sql
+└── logs/                             # 运行日志目录
 ```
 
 ## 核心模块说明
@@ -68,7 +98,7 @@ SmartVoyage/
 
 ### 旅游团 RAG
 
-- 使用 Qwen `text-embedding-v3` 生成 1024 维向量
+- 使用 MiniMax `embo-01` 生成 1536 维向量（可在 .env 改 `EMBEDDING_MODEL`）
 - 存入 Milvus，支持自然语言语义搜索旅游团
 
 ## 数据库表
@@ -87,49 +117,64 @@ SmartVoyage/
 
 ## 快速开始
 
+### 0. 安装依赖（首次克隆项目后）
+
+```bash
+# 安装 uv（如果还没装）：https://docs.astral.sh/uv/getting-started/installation/
+# 然后同步依赖（运行时 + 开发依赖）
+uv sync --group dev
+```
+
+> 推荐用 `make` 命令管理项目：`make help` 查看所有命令。
+
 ### 1. 初始化数据库
 
 ```bash
-# 执行全量建表脚本
-mysql -u smart_yoyage -p < sql/create_all_tables.sql
+mysql -u root -p < sql/create_all_tables.sql
 ```
 
 ### 2. 初始化旅游团向量数据
 
 ```bash
-python sql/init_tour_group_rag.py
+uv run python scripts/init_tour_group_rag.py
 ```
 
-### 3. 启动天气 MCP Server
+### 3. 启动 MCP Server（用 `make` 或 `python -m`）
 
 ```bash
-python mcp_server/mcp_weather_server.py
-# 访问地址：http://127.0.0.1:8002/mcp
+# 用 Makefile（推荐）
+make run-weather      # 端口 8002
+make run-ticket       # 端口 8001
+make run-trip         # 端口 8003
+
+# 或直接命令
+uv run python -m CorpAI.tools.weather
+uv run python -m CorpAI.tools.ticket
+uv run python -m CorpAI.tools.trip
 ```
 
-### 4. 启动票务 MCP Server
+### 4. 启动 A2A 智能体
 
 ```bash
-python mcp_server/mcp_ticket_server.py
-# 访问地址：http://127.0.0.1:8001/mcp
+make run-agent-weather    # 端口 5005
+make run-agent-ticket     # 端口 5006
+make run-agent-trip       # 端口 5007
 ```
 
-### 5. 启动 A2A 子代理
+### 5. 启动 FastAPI 后端
 
 ```bash
-# 天气 Agent
-python a2a_server/weather_server.py
-# 访问地址：http://127.0.0.1:5005
-
-# 票务 Agent
-python a2a_server/ticket_server.py
-# 访问地址：http://127.0.0.1:5006
+make run-api
+# 访问地址：http://127.0.0.1:8080
 ```
 
-### 6. 启动天气爬虫（可选）
+### 6. 运行测试
 
 ```bash
-python utils/spider_weather.py
+make test           # 全部测试
+make test-unit      # 纯单元测试
+make test-mcp       # MCP 服务测试（需 MySQL）
+make test-agent     # Agent 端到端测试（需 MCP + A2A 服务都在跑）
 ```
 
 ## 配置说明
@@ -137,9 +182,9 @@ python utils/spider_weather.py
 关键配置项在 `config.py` 的 `Config` 类中：
 
 ```python
-# 大模型
-self.base_url = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-self.model_name = 'qwen-plus'
+# 大模型（MiniMax - OpenAI 兼容协议）
+self.base_url = 'https://api.minimaxi.com/v1'
+self.model_name = 'MiniMax-Text-01'
 
 # 数据库
 self.host = 'localhost'
@@ -147,7 +192,7 @@ self.user = 'smart_yoyage'
 self.database = 'travel_rag'
 
 # 连接池
-self.pool_name = "smart_voyage_pool"
+self.pool_name = "corp_ai_pool"
 self.pool_size = 5
 
 # 天气数据源："database" 或 "api"

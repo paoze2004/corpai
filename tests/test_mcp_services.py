@@ -14,7 +14,7 @@ MCP 服务集成测试模块
 注意：数据库中的测试数据日期为 2026-08-01
 
 运行方式：
-    cd SmartVoyage
+    cd CorpAI
     python -m tests.test_mcp_services
 """
 
@@ -25,7 +25,7 @@ import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-# 确保能导入 SmartVoyage 模块（项目根目录在 ..）
+# 确保能导入 CorpAI 模块（项目根目录在 ..）
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
@@ -34,29 +34,29 @@ class TestWeatherService(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from SmartVoyage.mcp_server.mcp_weather_server import WeatherService
+        from CorpAI.tools.weather import WeatherService
         cls.service = WeatherService()
 
     def test_query_weather_single_day(self):
         """测试单天天气查询"""
-        result = self.service.query_weather("北京", "2026-07-10", "2026-07-10")
+        result = self.service.query_weather("北京", "2026-07-18", "2026-07-18")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "success")
         self.assertGreater(len(parsed["data"]), 0)
         first = parsed["data"][0]
         self.assertEqual(first["city"], "北京")
-        self.assertEqual(first["fx_date"], "2026-07-10")
+        self.assertEqual(first["fx_date"], "2026-07-18")
 
     def test_query_weather_date_range(self):
         """测试日期范围天气查询"""
-        result = self.service.query_weather("北京", "2026-07-10", "2026-07-14")
+        result = self.service.query_weather("北京", "2026-07-18", "2026-07-20")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "success")
-        self.assertEqual(len(parsed["data"]), 5)
+        self.assertEqual(len(parsed["data"]), 3)
 
     def test_query_weather_chengdu(self):
         """测试成都天气查询"""
-        result = self.service.query_weather("成都", "2026-07-15", "2026-07-15")
+        result = self.service.query_weather("成都", "2026-07-18", "2026-07-18")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "success")
         self.assertGreater(len(parsed["data"]), 0)
@@ -64,13 +64,13 @@ class TestWeatherService(unittest.TestCase):
 
     def test_query_weather_no_data(self):
         """测试无数据情况"""
-        result = self.service.query_weather("火星", "2026-07-15", "2026-07-15")
+        result = self.service.query_weather("火星", "2026-07-18", "2026-07-18")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "no_data")
 
     def test_weather_result_fields(self):
         """验证天气结果包含所有必要字段"""
-        result = self.service.query_weather("北京", "2026-07-10", "2026-07-10")
+        result = self.service.query_weather("北京", "2026-07-18", "2026-07-18")
         parsed = json.loads(result)
         first = parsed["data"][0]
         required_fields = ["city", "fx_date", "temp_max", "temp_min",
@@ -85,7 +85,7 @@ class TestTicketService(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from SmartVoyage.mcp_server.mcp_ticket_server import TicketService
+        from CorpAI.tools.ticket import TicketService
         cls.service = TicketService()
 
     # ========== 火车票测试 ==========
@@ -218,7 +218,7 @@ class TestTripService(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from SmartVoyage.mcp_server.mcp_trip_server import TripService
+        from CorpAI.tools.trip import TripService
         cls.service = TripService()
 
     # ========== 租车测试 ==========
@@ -257,15 +257,17 @@ class TestTripService(unittest.TestCase):
             for field in required_fields:
                 self.assertIn(field, first, f"缺少必要字段: {field}")
 
-    # ========== 旅游团测试（Milvus RAG - 需要 Embedding API） ==========
+    # ========== 旅游团测试（Milvus RAG - 需要 Embedding API 和 Milvus 服务） ==========
     def test_query_tour_group_semantic(self):
         """测试旅游团语义搜索"""
         result = self.service.query_tour_group("想看雪山的地方")
         parsed = json.loads(result)
-        # Milvus RAG 需要有效的 DashScope API Key
-        # 如果返回 error 说明 API Key 无效，跳过此测试
+        # 跳过条件 1：Embedding API Key 无效
         if parsed.get("status") == "error" and "API key" in parsed.get("message", ""):
             self.skipTest("Embedding API Key 无效，跳过 Milvus RAG 测试")
+        # 跳过条件 2：Milvus 服务未启动
+        if parsed.get("status") == "error" and "Milvus" in parsed.get("message", ""):
+            self.skipTest("Milvus 未运行，跳过 RAG 语义搜索测试")
         self.assertEqual(parsed["status"], "success")
         self.assertGreater(len(parsed["data"]), 0)
 
@@ -275,6 +277,8 @@ class TestTripService(unittest.TestCase):
         parsed = json.loads(result)
         if parsed.get("status") == "error" and "API key" in parsed.get("message", ""):
             self.skipTest("Embedding API Key 无效，跳过 Milvus RAG 测试")
+        if parsed.get("status") == "error" and "Milvus" in parsed.get("message", ""):
+            self.skipTest("Milvus 未运行，跳过 RAG 语义搜索测试")
         self.assertEqual(parsed["status"], "success")
         for item in parsed["data"]:
             self.assertEqual(item["city"], "丽江")
@@ -285,6 +289,8 @@ class TestTripService(unittest.TestCase):
         parsed = json.loads(result)
         if parsed.get("status") == "error" and "API key" in parsed.get("message", ""):
             self.skipTest("Embedding API Key 无效，跳过 Milvus RAG 测试")
+        if parsed.get("status") == "error" and "Milvus" in parsed.get("message", ""):
+            self.skipTest("Milvus 未运行，跳过 RAG 语义搜索测试")
         if parsed["data"]:
             first = parsed["data"][0]
             required_fields = ["tour_id", "tour_name", "city", "days", "price", "similarity"]
@@ -348,12 +354,12 @@ class TestMCPIntegration(unittest.TestCase):
 
     def test_all_services_return_valid_json(self):
         """验证所有服务返回有效的 JSON 格式"""
-        from SmartVoyage.mcp_server.mcp_weather_server import WeatherService
-        from SmartVoyage.mcp_server.mcp_ticket_server import TicketService
-        from SmartVoyage.mcp_server.mcp_trip_server import TripService
+        from CorpAI.tools.weather import WeatherService
+        from CorpAI.tools.ticket import TicketService
+        from CorpAI.tools.trip import TripService
 
         services = [
-            ("WeatherService", WeatherService(), lambda s: s.query_weather("北京", "2026-07-10", "2026-07-10")),
+            ("WeatherService", WeatherService(), lambda s: s.query_weather("北京", "2026-07-18", "2026-07-18")),
             ("TicketService-Train", TicketService(), lambda s: s.query_train("北京", "成都", "2026-08-01")),
             ("TripService-Car", TripService(), lambda s: s.query_car_rental("成都", "成都", "2026-08-01")),
         ]

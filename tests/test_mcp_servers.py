@@ -6,7 +6,7 @@ MCP 服务器测试模块
 2. MCP 服务器集成测试（需要数据库连接）
 
 运行方式：
-    cd SmartVoyage
+    cd CorpAI
     python -m tests.test_mcp_servers
 """
 
@@ -17,7 +17,7 @@ import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-# 确保能导入 SmartVoyage 模块
+# 确保能导入 CorpAI 模块
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
@@ -26,7 +26,7 @@ class TestFormatEncoder(unittest.TestCase):
     """测试 default_encoder 函数和 DateEncoder 类"""
 
     def setUp(self):
-        from utils.format import default_encoder, DateEncoder
+        from CorpAI.utils.format import default_encoder, DateEncoder
         self.default_encoder_func = default_encoder
         self.date_encoder_cls = DateEncoder
 
@@ -82,32 +82,32 @@ class TestWeatherMCPIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from SmartVoyage.mcp_server.mcp_weather_server import WeatherService
+        from CorpAI.tools.weather import WeatherService
         cls.service = WeatherService()
 
     def test_query_weather_single_day(self):
-        """测试单天天气查询——北京 2026-07-10"""
-        result = self.service.query_weather("北京", "2026-07-10", "2026-07-10")
+        """测试单天天气查询——北京 2026-07-18（库里实际有的起始日期）"""
+        result = self.service.query_weather("北京", "2026-07-18", "2026-07-18")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "success")
         self.assertGreater(len(parsed["data"]), 0)
         first = parsed["data"][0]
         self.assertEqual(first["city"], "北京")
-        self.assertEqual(first["fx_date"], "2026-07-10")
+        self.assertEqual(first["fx_date"], "2026-07-18")
 
     def test_query_weather_date_range(self):
-        """测试日期范围天气查询——北京 2026-07-10 ~ 2026-07-14"""
-        result = self.service.query_weather("北京", "2026-07-10", "2026-07-14")
+        """测试日期范围天气查询——北京 2026-07-18 ~ 2026-07-20"""
+        result = self.service.query_weather("北京", "2026-07-18", "2026-07-20")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "success")
-        self.assertEqual(len(parsed["data"]), 5)
+        self.assertEqual(len(parsed["data"]), 3)
         for day in parsed["data"]:
-            self.assertGreaterEqual(day["fx_date"], "2026-07-10")
-            self.assertLessEqual(day["fx_date"], "2026-07-14")
+            self.assertGreaterEqual(day["fx_date"], "2026-07-18")
+            self.assertLessEqual(day["fx_date"], "2026-07-20")
 
     def test_query_weather_chengdu(self):
-        """测试成都天气查询"""
-        result = self.service.query_weather("成都", "2026-07-15", "2026-07-15")
+        """测试成都天气查询——成都 2026-07-18"""
+        result = self.service.query_weather("成都", "2026-07-18", "2026-07-18")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "success")
         self.assertGreater(len(parsed["data"]), 0)
@@ -115,13 +115,13 @@ class TestWeatherMCPIntegration(unittest.TestCase):
 
     def test_query_weather_no_data(self):
         """测试无数据情况"""
-        result = self.service.query_weather("火星", "2026-07-15", "2026-07-15")
+        result = self.service.query_weather("火星", "2026-07-18", "2026-07-18")
         parsed = json.loads(result)
         self.assertEqual(parsed["status"], "no_data")
 
     # def test_weather_mcp_server_config(self):
     #     """验证天气 MCP 服务器配置"""
-    #     from SmartVoyage.mcp_server.mcp_weather_server import create_weather_mcp_server
+    #     from CorpAI.mcp_server.mcp_weather_server import create_weather_mcp_server
     #     server = create_weather_mcp_server()
     #     self.assertEqual(server.name, "WeatherTools")
 
@@ -131,7 +131,7 @@ class TestTicketMCPIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from SmartVoyage.mcp_server.mcp_ticket_server import TicketService
+        from CorpAI.tools.ticket import TicketService
         cls.service = TicketService()
 
     def test_query_train(self):
@@ -206,7 +206,7 @@ class TestTicketMCPIntegration(unittest.TestCase):
 
     # def test_ticket_mcp_server_config(self):
     #     """验证票务 MCP 服务器配置"""
-    #     from SmartVoyage.mcp_server.mcp_ticket_server import create_ticket_mcp_server
+    #     from CorpAI.mcp_server.mcp_ticket_server import create_ticket_mcp_server
     #     server = create_ticket_mcp_server()
     #     self.assertEqual(server.name, "TicketTools")
 
@@ -216,7 +216,7 @@ class TestTripMCPIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from SmartVoyage.mcp_server.mcp_trip_server import TripService
+        from CorpAI.tools.trip import TripService
         cls.service = TripService()
 
     def test_query_car_rental(self):
@@ -271,7 +271,7 @@ class TestTripMCPIntegration(unittest.TestCase):
 
     # def test_trip_mcp_server_config(self):
     #     """验证行程 MCP 服务器配置"""
-    #     from SmartVoyage.mcp_server.mcp_trip_server import create_trip_mcp_server
+    #     from CorpAI.mcp_server.mcp_trip_server import create_trip_mcp_server
     #     server = create_trip_mcp_server()
     #     self.assertEqual(server.name, "TripTools")
 

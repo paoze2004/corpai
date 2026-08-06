@@ -26,7 +26,7 @@ import time
 import sys
 import os
 
-# 确保能导入 SmartVoyage 模块
+# 确保能导入 CorpAI 模块
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from python_a2a import A2AClient, Task

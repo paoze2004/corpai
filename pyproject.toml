@@ -1,12 +1,45 @@
 [project]
-name = "smartvoyage"
+name = "CorpAI"
 version = "0.1.0"
-description = "Add your description here"
+description = "基于大模型 + MCP 的智能旅游助手（天气 / 票务 / 行程 / RAG）"
 requires-python = ">=3.11"
+# 注意：本项目是"应用项目"（application），不是"库"（library）。
+# 因此没有 [build-system] / [tool.setuptools] 段——不把 CorpAI 自身
+# 安装到 site-packages。运行时通过 `python -m CorpAI.xxx` 从源码目录启动。
+#
+# 依赖说明：
+#   - pyproject.toml 只声明"意图"（最低版本要求）
+#   - 精确版本由 uv.lock 锁定（不要手动改锁文件，交给 uv lock 管理）
+#   - 代码里未使用的包不写进来（flask / streamlit / dashscope SDK / MiniMax SDK / langchain-mcp-adapters 都不在依赖里）
 dependencies = [
-    "fastapi>=0.139.1",
-    "flask>=3.1.3",
-    "langchain>=1.3.13",
-    "python-a2a>=0.5.10",
-    "streamlit>=1.59.2",
+    # ===== Web 框架 =====
+    "fastapi>=0.116.0",         # FastAPI 主框架
+    "uvicorn[standard]>=0.35.0", # ASGI 服务器（含 httptools / uvloop / websockets 推荐依赖）
+    "pydantic>=2.0",             # 数据校验（虽然 FastAPI 间接依赖，但代码里直接 import，应显式声明）
+
+    # ===== LLM 编排 =====
+    # 代码使用 langchain 0.3.x API（create_tool_calling_agent / AgentExecutor），
+    # 锁住 <1.0 防止 uv 升到 1.x 后 API 不兼容
+    "langchain>=0.3.0,<1.0",
+    "langchain-core>=0.3.0,<1.0",
+    "langchain-openai>=0.3.0,<1.0",
+
+    # ===== 数据存储 =====
+    "mysql-connector-python>=9.0.0", # MySQL 驱动（官方版，含连接池）
+    "pymilvus>=2.5.0",                # Milvus 向量数据库客户端
+
+    # ===== 业务工具 =====
+    "python-a2a>=0.5.0", # A2A 协议 + FastMCP 框架（一站式依赖，涵盖 A2AServer / FastMCP / create_fastapi_app）
+    "requests>=2.32.0",  # HTTP 客户端（调 Embedding / 和风天气 API）
+    "pytz>=2025.0",      # 时区处理
+    "schedule>=1.2.0",   # 定时任务（天气数据定时爬取）
+    "python-dotenv>=1.0.0", # .env 文件加载
+]
+
+# ===== 开发 / 测试依赖（PEP 735 标准，uv 原生支持）=====
+# 安装：uv sync --group dev
+# 仅运行时不需要这些
+[dependency-groups]
+dev = [
+    "pytest>=8.0", # 测试框架
 ]
