@@ -71,7 +71,7 @@ class TraceContextMiddleware(BaseHTTPMiddleware):
             ).observe(elapsed)
 
 
-app = FastAPI(title="CorpAI API", description="基于A2A的旅行智能助手")
+app = FastAPI(title="CorpAI API", description="企业 AI Copilot 平台 — 可插拔多 Agent")
 app.add_middleware(TraceContextMiddleware)
 
 # Phase 4:公开 Prometheus /metrics 端点(给 scraper;不需 JWT)

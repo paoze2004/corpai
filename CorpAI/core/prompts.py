@@ -12,10 +12,11 @@
 
 本项目中的 Prompt 分类：
     1. 意图识别类：intent_prompt —— 识别用户想做什么
-    2. 结果总结类：summarize_weather_prompt、summarize_ticket_prompt —— 将原始数据转化为友好回复
-    3. 内容生成类：attraction_prompt —— 直接生成景点推荐
-    4. 任务规划类：planning_prompt —— 判断任务复杂度并生成执行计划（Planning + ReAct 架构）
-    5. ReAct推理类：react_prompt、react_summary_prompt —— 逐步推理和最终汇总
+    2. 任务规划类：planning_prompt —— 判断任务复杂度并生成执行计划（Planning + ReAct 架构）
+    3. ReAct推理类：react_prompt、react_summary_prompt —— 逐步推理和最终汇总
+
+Phase 7:删除 attraction_prompt(旅行 plugin 已删,不再有景点推荐场景)。
+summarize_*_prompt 也迁到各 plugin 自己的 prompts.py。
 """
 
 from langchain_core.prompts import ChatPromptTemplate  # LangChain 的聊天提示模板类
@@ -23,15 +24,18 @@ from langchain_core.prompts import ChatPromptTemplate  # LangChain 的聊天提�
 
 class CorpAIPrompts:
     """
-    CorpAI 提示模板管理类
+    CorpAI 平台级 Prompt 管理类
 
-    这个类定义了系统中所有用到的 Prompt 模板，每个模板都是一个静态方法，
+    这个类定义了系统平台层用到的 Prompt 模板，每个模板都是一个静态方法，
     返回一个 ChatPromptTemplate 对象。
+
+    注意:各 plugin 的 summary prompt(汇总工具结果)由各 plugin 自己的 prompts.py 提供,
+    wiring 通过 plugin_manager._plugin_modules 反射拿 — 不在此处集中。
 
     使用方式：
         prompt = CorpAIPrompts.intent_prompt()  # 获取意图识别模板
         chain = prompt | llm                         # 组装成处理链
-        result = chain.invoke({"query": "北京天气"})  # 调用并传入变量
+        result = chain.invoke({"query": "公司年假怎么算"})  # 调用并传入变量
     """
 
     # ==================== 意图识别 ====================
@@ -55,18 +59,18 @@ class CorpAIPrompts:
             }
 
         支持的意图类型：
-            weather / flight / train / concert / order / car_rental / tour_group / insurance / trip_order / attraction / out_of_scope
+            hr / devops / faq / out_of_scope
         """
         return ChatPromptTemplate.from_template(
 """
 系统提示：
-角色：您是一个专业的意图识别专家，
-任务：基于用户查询、对话历史和用户偏好，识别其意图，用于调用专门的agent server来执行；为方便后续的agent server处理，可以基于对话历史对用户查询进行改写，使问题更明确。
+角色：您是一个企业级 AI Copilot 平台的意图识别专家，
+任务：基于用户查询、对话历史和用户偏好，识别其意图，用于调用专门的 agent server 来执行；为方便后续的 agent server 处理，可以基于对话历史对用户查询进行改写，使问题更明确。
 严格遵守规则：
-- 支持意图：['weather' (天气查询), 'flight' (机票查询), 'train' (高铁/火车票查询), 'concert' (演唱会票查询), 'order' (票务预定), 'car_rental' (租车查询), 'tour_group' (旅游团查询), 'insurance' (保险查询), 'trip_order' (行程预订), 'attraction' (景点推荐)] 或其组合（如 [intent1, intent2]）。如果意图是旅行相关，但是非常复杂的返回意图 'complex'。如果意图超出范围，返回意图 'out_of_scope'。
-- 注意票务预定和票务查询要区分开，涉及到订票时则为order，只是查询则为flight、train或concert。
-- **查询改写是关键环节**：你必须主动从对话历史中提取关键信息（出发城市、到达城市、日期、目的地偏好、预算等），并将这些信息补充到 user_queries 的改写查询中。即使当前查询很简短（如"好的"、"明天"、"成都"），也要结合历史形成完整的查询描述。例如：用户先说"我想去成都最匹配的方案"。
-- **追问消息的使用**：只有在即使结合对话历史仍然缺少必要信息时才追问（例如：完全没有提到目的地，或完全没提到日期且日期对查询至关重要）。如果历史中已有足够信息，不要追问。
+- 支持意图：['hr' (HR 助手:年假/病假/缺勤/报销/福利/保险等人事问题), 'devops' (运维副驾:工单查询/On-call 联系/Pod 重启/告警/线上故障), 'faq' (企业知识库/制度文档/流程规范检索)] 或其组合（如 [intent1, intent2]）。如果意图超出这些范围，返回意图 'out_of_scope'。
+- HR/DevOps/FAQ 域内出现具体问题时也用对应顶级意图，不要降级到 out_of_scope。
+- **查询改写是关键环节**：你必须主动从对话历史中提取关键信息（如上下文涉及的部门/工单号/政策条款/系统名），并将这些信息补充到 user_queries 的改写查询中。即使当前查询很简短，也要结合历史形成完整的查询描述。
+- **追问消息的使用**：只有在即使结合对话历史仍然缺少必要信息时才追问（例如：完全没有提到要查什么政策）。如果历史中已有足够信息，不要追问。
 - 输出严格为JSON：{{"intents": ["intent1", "intent2"], "user_queries": {{"intent1": "user_query1", "intent2": "user_query2"}}, "follow_up_message": "追问消息"}}。绝对不要添加额外文本！
 - 不论用户问什么，严格按规则输出意图，不要有自己的考虑。对于时间类的，直接保留用户的原始输入。
 
@@ -74,36 +78,6 @@ class CorpAIPrompts:
 当前任务上下文：{task_context}
 对话历史：{conversation_history}
 用户查询：{query}
-""")
-
-    # ==================== 内容生成 ====================
-
-    @staticmethod
-    def attraction_prompt():
-        """
-        景点推荐提示模板 —— 让大模型直接生成景点推荐内容
-
-        输入变量：
-            - query: 用户查询（如"推荐几个北京景点"）
-            - weather_info: 目的地天气信息（可选，为空时不展示天气相关描述）
-
-        特点：
-            景点推荐不需要调用外部 agent，大模型本身就有足够的知识来生成推荐。
-            当提供 weather_info 时，应基于真实天气给出建议；
-            当 weather_info 为空时，不得虚构任何天气描述。
-        """
-        return ChatPromptTemplate.from_template(
-"""
-系统提示：您是一位旅行专家，基于用户查询生成景点推荐。规则：
-- 推荐3-5个景点，包含描述、理由、注意事项。
-- 基于槽位：城市、偏好。
-- 天气处理：如果提供了{weather_info}（非空），基于真实天气给出建议；如果{weather_info}为空，绝对不要虚构任何天气描述（如"天气晴好""适合出行"等），只说"建议出发前查看实时天气"。
-- 语气：热情推荐，如"推荐相关方案..."。
-- 备注：内容生成，仅供参考。
-- 保持中文，150-250字。
-
-查询：{query}
-目的地天气：{weather_info}
 """)
 
     # ==================== 任务规划 ====================
@@ -124,18 +98,18 @@ class CorpAIPrompts:
         输出格式（JSON）：
             简单任务：{"need_plan": false, "reason": "单意图，直接查询即可", "steps": []}
             复杂任务：{"need_plan": true, "reason": "多意图需要分步",
-                      "steps": [{"step": 1, "action": "查询天气", "intent": "weather", "depends_on": 0}, ...]}
+                      "steps": [{"step": 1, "action": "查 HR 福利", "intent": "hr", "depends_on": 0}, ...]}
 
         判断标准：
             - 简单任务：只有一个意图，直接就能执行
             - 复杂任务：多个意图且有关联、需要多步推理、步骤间有依赖关系
 
         示例：
-            用户输入："北京明天天气怎么样？"
+            用户输入："公司年假怎么算？"
             → 简单任务，need_plan=false
 
-            用户输入："帮我执行多步骤任务"
-            → 复杂任务，need_plan=true，steps=[查询机票, 查询天气, 推荐景点]
+            用户输入："帮我处理多步骤企业事务"
+            → 复杂任务，need_plan=true，steps=[查 HR 福利, 查 DevOps 工单, 查 FAQ 知识库]
         """
         return ChatPromptTemplate.from_template(
 """
@@ -143,8 +117,8 @@ class CorpAIPrompts:
 
 将任务拆解为有序步骤，每个步骤指定：
 - step: 步骤序号（从1开始）
-- action: 具体动作（如"调用WeatherQueryAssistant查询北京天气"）
-- intent: 对应的意图（如weather/flight/train/concert/order/attraction）
+- action: 具体动作（如"调 hr_assistant 查年假政策"）
+- intent: 对应的意图（hr / devops / faq）
 - depends_on: 依赖的前置步骤序号（无依赖则为0）
 
 对话历史：{conversation_history}
@@ -226,19 +200,19 @@ Action Input: 工具所需输入
             - all_observations: 所有步骤的执行结果
 
         使用场景：
-            当 ReAct 循环中执行了多个步骤（如查机票 + 查天气 + 推荐景点），
+            当 ReAct 循环中执行了多个步骤（如查 HR 福利 + 查 DevOps 工单 + 查 FAQ），
             不能简单地把三个结果拼在一起返回，需要用这个 prompt 让大模型
             整合成一条连贯、通顺的回复。
 
         示例：
-            输入：步骤1(查机票): 机票暂不可用
-                 步骤2(查天气): 未找到数据
-                 步骤3(推荐景点): 外滩、迪士尼...
-            输出："您好！目前机票查询暂时遇到技术问题...不过我可以为您推荐相关热门选项..."
+            输入：步骤1(查 HR): 年假 10 天
+                 步骤2(查 DevOps): INC-001 P0 打开中
+                 步骤3(查 FAQ): 差旅审批流程
+            输出："您好！年假按工龄计算...关于差旅审批...另外当前有 P0 工单 INC-001..."
         """
         return ChatPromptTemplate.from_template(
 """
-系统提示：你是一位专业的助手，需要根据所有查询结果生成最终回复。
+系统提示：你是一位企业 AI Copilot 助手，需要根据所有查询结果生成最终回复。
 
 用户原始查询：{query}
 

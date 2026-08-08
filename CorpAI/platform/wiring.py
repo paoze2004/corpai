@@ -21,8 +21,8 @@ from python_a2a.client import A2AClient
 
 from CorpAI.config import Config
 from CorpAI.core.memory import ConversationMemory
-# Phase 5:CorpAIPrompts.summarize_*_prompt 迁到各 plugin.prompts 模块;
-# wiring 用 _resolve_summary_prompt 通过 plugin_manager 拿模板。
+# Phase 5:各 plugin 自己的 summarize_*_prompt 在 plugin.prompts 模块里;
+# wiring 用 _resolve_summary_prompt 通过 plugin_manager 反射拿模板。
 from CorpAI.logging import logger
 from CorpAI.platform.observability.metrics import (
     A2A_CALL_TOTAL,
@@ -78,31 +78,20 @@ def _resolve_summary_prompt(plugin_manager: PluginRegistry | None, manifest, nam
 
 
 def _make_a2a_network(plugin_manager: PluginRegistry | None = None) -> tuple[dict[str, str], AgentNetwork]:
-    """注册 A2A 子代理。
+    """注册 A2A 子代理 — Phase 7 起完全走 plugin_manager(无 legacy fallback)。
 
-    Phase 3 扩展:plugin_manager 不为空时,从 llm_agent 类型插件取 endpoint;
-    否则用 hardcoded fallback 3 个 A2A(向后兼容 Phase 1.7/2 行为)。
+    plugin_manager 不为 None 且至少 1 个 llm_agent 时,从 manifest 取 endpoint;
+    否则返空 dict(平台退化为只跑 LLM 直答)。
     """
-    if plugin_manager is not None and plugin_manager.list_agents():
+    agent_urls: dict[str, str] = {}
+    if plugin_manager is not None:
         agent_urls = {
             m.name: m.endpoint for m in plugin_manager.list_agents() if m.endpoint
         }
-        if not agent_urls:
-            agent_urls = _LEGACY_AGENT_URLS
-    else:
-        agent_urls = _LEGACY_AGENT_URLS
-    network = AgentNetwork(name="旅行助手网络")
+    network = AgentNetwork(name="CorpAI企业助手网络")
     for name, url in agent_urls.items():
         network.add(name, A2AClient(url, timeout=120))
     return agent_urls, network
-
-
-# Phase 3 fallback hardcoded dict(便于 _make_a2a_network 复用)
-_LEGACY_AGENT_URLS: dict[str, str] = {
-    "WeatherQueryAssistant": "http://localhost:5005",
-    "TicketAssistant": "http://localhost:5006",
-    "TripAssistant": "http://localhost:5007",
-}
 
 
 def _make_llm(conf: Config) -> ChatOpenAI:
@@ -188,77 +177,9 @@ def _make_agent_card_provider(
     return provide_cards
 
 
-def _make_attraction_executor(
-    agent_network: AgentNetwork, llm: ChatOpenAI, memory: ConversationMemory,
-) -> Callable[[str], Awaitable[str]]:
-    """city_extract → A2A 查天气 → attraction_prompt | llm.astream(原 chat.py:294-302 + 375-418)。"""
-    city_extract_prompt = ChatPromptTemplate.from_template(
-"""从以下用户查询和对话历史中提取目的地城市(用于天气查询)。规则:
-- 只输出城市名称,不要输出其他内容。
-- 如果查询中没有明确城市,尝试从对话历史中推断。
-- 如果无法确定城市,输出"未知"。
-
-对话历史:{conversation_history}
-用户查询:{query}
-""")
-
-    async def fetch_weather(query_str: str) -> str:
-        try:
-            chain = city_extract_prompt | llm
-            city = chain.invoke({
-                "conversation_history": memory.get_short_term_text(),
-                "query": query_str,
-            }).content.strip()
-            city = strip_think(city)
-            if city == "未知" or not city:
-                logger.info(f"无法从查询中提取目的地城市: {query_str}")
-                return ""
-            logger.info(f"从景点查询中提取到城市: {city}")
-            agent = agent_network.get_agent("WeatherQueryAssistant")
-            if agent is None:
-                return ""
-            weather_query = f"{city}明天天气"
-            msg = Message(content=TextContent(text=weather_query), role=MessageRole.USER)
-            task = Task(id="task-" + str(uuid.uuid4()), message=msg.to_dict())
-            # Phase 4:包 span + to_thread_propagating 传播 ContextVar
-            with start_span(
-                "a2a_call.WeatherQueryAssistant",
-                {"agent": "WeatherQueryAssistant", "purpose": "attraction_weather"},
-            ) as span:
-                try:
-                    raw = await agent.send_task_async(task)  # Phase 6:直接 await(在 async 上下文,无需 thread+asyncio.run)
-                    span.set_attr("a2a_status", str(raw.status.state))
-                    A2A_CALL_TOTAL.labels(
-                        agent="WeatherQueryAssistant", status=str(raw.status.state),
-                    ).inc()
-                    if raw.status.state == "completed" and raw.artifacts:
-                        return raw.artifacts[0]["parts"][0]["text"]
-                    return ""
-                except Exception as exc:
-                    span.end_err(str(exc))
-                    A2A_CALL_TOTAL.labels(
-                        agent="WeatherQueryAssistant", status="error",
-                    ).inc()
-                    raise
-        except Exception as e:
-            logger.warning(f"查询景点天气失败: {e}")
-            return ""
-
-    async def attraction_executor(query_str: str) -> str:
-        weather_info = await fetch_weather(query_str)
-        chain = CorpAIPrompts.attraction_prompt() | llm
-        chunks: list[str] = []
-        async for chunk in chain.astream({"query": query_str, "weather_info": weather_info}):
-            text = strip_think(chunk.content) if hasattr(chunk, "content") else str(chunk)
-            chunks.append(text)
-        return "".join(chunks)
-
-    return attraction_executor
-
-
 def _make_simple_step_executor(
     agent_network: AgentNetwork, llm: ChatOpenAI, memory: ConversationMemory,
-    conf: Config, attraction_executor: Callable[[str], Awaitable[str]],
+    conf: Config,
     plugin_manager: PluginRegistry | None = None,
 ) -> Callable[[str, str], Awaitable[str]]:
     """Phase 5:plugin_manager 不为 None 时优先用 agents_for_intent 拿 manifest.name + summary_prompt;
@@ -342,9 +263,6 @@ def _make_simple_step_executor(
         return strip_think(summarized)
 
     async def simple_step_executor(intent: str, query_str: str) -> str:
-        # attraction 委托(ReAct 路径也走它,统一 astream 行为)
-        if intent == "attraction":
-            return await attraction_executor(query_str)
         # Phase 5:plugin_manager 优先拿 manifest.name,fallback 走 conf.intent 老 dict
         agent_name: str | None = None
         if plugin_manager is not None:
@@ -352,13 +270,9 @@ def _make_simple_step_executor(
             if _m is not None:
                 agent_name = _m.name
         if agent_name is None:
-            agent_name = conf.intent.get(intent)  # 向后兼容 Phase 1.7/2/3/4
+            agent_name = conf.intent.get(intent)  # 兼容 Phase 1.7/2/3/4,Phase 7 后基本为空
         if not agent_name:
-            return "暂不支持此意图。"
-        # 票务类意图:提取实体 + 更新 task_context(原 chat.py:613-615)
-        if intent in ["flight", "train", "concert", "car_rental", "tour_group", "insurance"]:
-            memory.extract_entities(intent, query_str)
-            memory.update_task_context({"type": intent, "query": query_str})
+            return f"暂不支持意图:{intent}。当前支持:hr / devops / faq。"
         return await _call_a2a_and_summarize(agent_name, query_str, intent)
 
     return simple_step_executor
@@ -379,9 +293,8 @@ def build_default_service(
     # user 到 memory,short_term_messages[-1] 就是当前输入
     messages_provider: Callable[[], list] = lambda: memory.short_term_messages
 
-    attraction_executor = _make_attraction_executor(agent_network, llm, memory)
     simple_step_executor = _make_simple_step_executor(
-        agent_network, llm, memory, conf, attraction_executor, plugin_manager,
+        agent_network, llm, memory, conf, plugin_manager,
     )
 
     return OrchestratorService(
@@ -395,7 +308,6 @@ def build_default_service(
             messages_provider=messages_provider,
         ),
         simple_step_executor=simple_step_executor,
-        attraction_executor=attraction_executor,
         memory=memory,
         agent_card_provider=_make_agent_card_provider(agent_network, agent_urls),
     )

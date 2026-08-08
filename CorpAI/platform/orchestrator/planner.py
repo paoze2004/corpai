@@ -5,9 +5,8 @@
 - should_skip: 单意图或全部独立意图 → True;多意图含非独立 → False
 - plan: LLM 调用 + JSON 解析(无容错)
 
-独立意图集合(9 个):
-    weather, flight, train, concert, attraction,
-    car_rental, tour_group, insurance, trip_order
+独立意图集合(Phase 7 重置 — 仅 3 个企业意图):
+    hr, devops, faq
 
 依赖注入:
 - llm: LangChain ChatModel
@@ -25,9 +24,10 @@ from CorpAI.utils.format import strip_think
 
 
 # 独立意图集合 — 多意图全在此集合内可跳过 planning
+# Phase 7:删除 weather/flight/train/concert/attraction/car_rental/tour_group/insurance/trip_order,
+# 这些旅行意图已不在 intent_prompt 列表里,出现时直接由 out_of_scope 处理。
 INDEPENDENT_INTENTS = frozenset({
-    "weather", "flight", "train", "concert", "attraction",
-    "car_rental", "tour_group", "insurance", "trip_order",
+    "hr", "devops", "faq",
 })
 
 

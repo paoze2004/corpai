@@ -13,16 +13,11 @@ OrchestratorService — 调度核心(ADR-004 唯一 high-level 入口)。
 - planner: TaskPlanner(skip heuristic + plan)
 - react_runner: ReActRunner(ReAct 执行 + 汇总)
 - simple_step_executor: async (intent, query_str) → str
-    简单路径上,非 attraction 单步执行(由 wiring.py 提供 closure)
-- attraction_executor: async (query_str) → str
-    attraction 意图直接调 LLM 生成推荐(不走 A2A)(由 wiring.py 提供 closure)
+    单步执行(由 wiring.py 提供 closure,Phase 7 起 plugin manifest 优先)
 - memory: 任何 duck-typed(add_message / get_short_term_text / ...)
 - agent_card_provider: 可选 Callable[[], list[dict]],由 wiring.py 注入真实 A2A provider
 
-未来扩展(Phase 2+):
-- memory: 替换为 MemoryGateway(per-user scoping)
-- simple_step_executor: 替换为 ToolsGateway(插件化)
-- agent_card_provider: 同样由 ToolsGateway 提供
+Phase 7:移除 attraction_executor(旅行 plugin 已删,不再有"景点推荐"直答路径)。
 
 App 兼容门面(Phase 1.7 从 ChatService 迁移过来):
 - get_memory_state / clear_memory / update_user_profile:委托给 self.memory
@@ -40,7 +35,6 @@ from CorpAI.platform.orchestrator.react_loop import ReActRunner
 
 # 类型别名
 SimpleStepExecutor = Callable[[str, str], Awaitable[str]]
-AttractionExecutor = Callable[[str], Awaitable[str]]
 # A2A Agent Card 同步供应者 — 由 wiring.py 注入,OrchestratorService 不直接持有 AgentNetwork
 AgentCardProvider = Callable[[], list[dict]]
 
@@ -58,7 +52,6 @@ class OrchestratorService:
         planner: TaskPlanner,
         react_runner: ReActRunner,
         simple_step_executor: SimpleStepExecutor,
-        attraction_executor: AttractionExecutor,
         memory: Any,
         agent_card_provider: AgentCardProvider | None = None,
     ):
@@ -68,9 +61,7 @@ class OrchestratorService:
             planner: TaskPlanner 实例
             react_runner: ReActRunner 实例
             simple_step_executor: async (intent, query_str) → str
-                处理非 attraction 的单步执行(由 ToolsGateway 或 ChatService._call_agent_intent 实现)
-            attraction_executor: async (query_str) → str
-                attraction 意图直接调 LLM 生成推荐(不走 A2A)
+                单步执行(由 ToolsGateway 或 ChatService._call_agent_intent 实现)
             memory: 记忆对象,需 .add_message() / .get_short_term_text()
             agent_card_provider: 可选,返回 A2A Agent Card 列表的同步 callable
                 (Phase 1.7 用,Phase 3 替换为 ToolsGateway 提供者)。未注入时空列表。
@@ -79,7 +70,6 @@ class OrchestratorService:
         self.planner = planner
         self.react_runner = react_runner
         self.simple_step_executor = simple_step_executor
-        self.attraction_executor = attraction_executor
         self.memory = memory
         # agent_card_provider 注入;未注入 → 空列表,API 层调用 get_agent_cards() 返回 []
         self._agent_card_provider: AgentCardProvider = (
@@ -185,10 +175,7 @@ class OrchestratorService:
                         for intent in intents:
                             logger.info(f"处理意图:{intent}")
                             query_str = user_queries.get(intent, "")
-                            if intent == "attraction":
-                                result = await self.attraction_executor(query_str)
-                            else:
-                                result = await self.simple_step_executor(intent, query_str)
+                            result = await self.simple_step_executor(intent, query_str)
                             responses.append(result)
                         response = "\n\n".join(responses)
 
@@ -278,17 +265,13 @@ class OrchestratorService:
     # 流式内部辅助(从 chat.py:955-1063 简化)
     # ════════════════════════════════════════════════════════════════
     async def _call_agent_intent_stream(self, intent: str, query_str: str):
-        """流式单 intent 执行 — attraction 走 attraction_executor,其他走 simple_step_executor。
+        """流式单 intent 执行 — 全部走 simple_step_executor。
 
         注:Phase 1.6 简化版,直接 yield 完整结果(无 token-level streaming)。
         Phase 4+ 才引入真正的 token streaming(ADR-008)。
         """
-        if intent == "attraction":
-            result = await self.attraction_executor(query_str)
-            yield result
-        else:
-            result = await self.simple_step_executor(intent, query_str)
-            yield result
+        result = await self.simple_step_executor(intent, query_str)
+        yield result
 
     async def _react_loop_stream(self, steps: list[dict], user_queries: dict[str, str]):
         """流式 ReAct — 简化版:先 await run,再 yield 整个结果。

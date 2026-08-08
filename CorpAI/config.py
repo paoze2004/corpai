@@ -74,19 +74,12 @@ class Config:
         # ── 日志 ──
         self.log_file = os.path.join(_project_root, "logs", "app.log")
 
-        # ── 意图路由(LEGACY:plugin manifest 优先,fallback 走这个;Phase 7 旅行 plugin 已删,
-        #    仅保留作向后兼容 placeholder — 无 plugin 处理时返 "暂不支持")──
-        self.intent = {
-            "weather": "WeatherQueryAssistant",
-            "flight": "TicketAssistant",
-            "train": "TicketAssistant",
-            "concert": "TicketAssistant",
-            "order": "TicketAssistant",
-            "car_rental": "TripAssistant",
-            "tour_group": "TripAssistant",
-            "insurance": "TripAssistant",
-            "trip_order": "TripAssistant",
-        }
+        # ── 意图路由 ──
+        # 优先走 plugin_manager.agents_for_intent(intent)(entry_points 自动发现);
+        # 此 dict 仅在 plugin 未命中时兜底,Phase 7 旅行 plugin 已删,
+        # 不再列任何旅行 intent(weather/flight/train/...)映射 — 那些 A2A URL 不存在。
+        # 企业插件(hr/devops/faq)统一由 plugin manifest 注册,不在此处硬编码。
+        self.intent: dict[str, str] = {}
 
         # ── 天气数据源(可选 "database" | "api")──
         self.weather_source = _env("WEATHER_SOURCE", "database")
@@ -109,7 +102,7 @@ class Config:
         # ── Milvus ──
         self.milvus_host = _env("MILVUS_HOST", "192.168.88.100")
         self.milvus_port = _env_int("MILVUS_PORT", 19530)
-        self.tour_group_collection = _env("TOUR_GROUP_COLLECTION", "tour_groups")
+        # Phase 7:删除 tour_group_collection(旅行 plugin 已删,无业务使用)
         self.faq_collection = _env("FAQ_COLLECTION", "faq_docs")  # Phase 5 faq plugin 加
 
         # ── Embedding(独立于 LLM,Phase 6 env override)──

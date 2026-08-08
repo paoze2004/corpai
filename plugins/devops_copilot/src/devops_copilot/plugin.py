@@ -11,7 +11,7 @@ AGENT_MANIFEST = PluginManifest(
     endpoint="http://localhost:5020",
     llm_prompt=DEVOPS_LLM_PROMPT,
     summary_prompt="summarize_incident",
-    required_intents=["incident", "oncall", "pod_restart"],
+    required_intents=["devops", "incident", "oncall", "pod_restart"],
     permissions=["devops:read", "devops:write"],  # 双 scope 演示 read/write
     tags=["devops", "k8s", "incident", "oncall"],
 )

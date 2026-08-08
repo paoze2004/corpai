@@ -21,10 +21,10 @@ import mysql.connector
 from CorpAI.platform.auth.passwords import hash_password
 
 
-DB_HOST = "localhost"
-DB_USER = "root"
-DB_PASSWORD = "root"
-DB_NAME = "CorpAI"
+DB_HOST = os.getenv("MYSQL_HOST", "localhost")
+DB_USER = os.getenv("MYSQL_USER", "admin")
+DB_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
+DB_NAME = os.getenv("MYSQL_DATABASE", "CorpAI")
 
 
 def main() -> int:

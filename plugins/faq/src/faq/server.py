@@ -15,6 +15,25 @@ from CorpAI.config import Config
 logger = logging.getLogger(__name__)
 
 
+def _extract_text(task: Task) -> str:
+    """从 task.message(dict)里提取文本 — 兼容 Google A2A parts + 标准 content 两种 wire 格式。"""
+    msg = task.message
+    if not msg or not isinstance(msg, dict):
+        return ""
+    if "parts" in msg and isinstance(msg["parts"], list):
+        chunks: list[str] = []
+        for part in msg["parts"]:
+            if isinstance(part, dict) and part.get("type") == "text":
+                chunks.append(part.get("text", ""))
+        return "".join(chunks)
+    content = msg.get("content")
+    if isinstance(content, dict):
+        return content.get("text", "") or ""
+    if isinstance(content, str):
+        return content
+    return ""
+
+
 class FaqServer(A2AServer):
     """Phase 5 简化版 A2A:关键词路由 + retriever 调。"""
 
@@ -36,23 +55,17 @@ class FaqServer(A2AServer):
             temperature=0.1,
         )
 
-    async def handle_task(self, task: Task) -> Task:
+    def handle_task(self, task: Task) -> Task:
         try:
-            text = ""
-            if task.message and task.message.parts:
-                for part in task.message.parts:
-                    if isinstance(part, TextContent):
-                        text += part.text
+            text = _extract_text(task)
             if not text.strip():
                 return Task(id=task.id, status=TaskStatus(state=TaskState.FAILED, message=task.message))
-            response = r.query_faq(text)
+            # FAQ server 直接全文转给 query_faq 做 substring + token overlap
+            response = r.query_faq(text, limit=3)
             return Task(
                 id=task.id,
-                status=TaskStatus(
-                    state=TaskState.COMPLETED,
-                    message=task.message,
-                    artifacts=[{"parts": [{"type": "text", "text": response}]}],
-                ),
+                status=TaskStatus(state=TaskState.COMPLETED, message=task.message),
+                artifacts=[{"parts": [{"type": "text", "text": response}]}],
             )
         except Exception:
             logger.exception("faq handle_task failed")
