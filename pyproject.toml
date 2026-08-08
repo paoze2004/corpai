@@ -1,7 +1,7 @@
 [project]
 name = "CorpAI"
 version = "0.1.0"
-description = "基于大模型 + MCP 的智能旅游助手（天气 / 票务 / 行程 / RAG）"
+description = "CorpAI 企业 AI Copilot 平台 — 可插拔多 Agent,统一 RBAC + 可观测性"
 requires-python = ">=3.11"
 # 注意：本项目是"应用项目"（application），不是"库"（library）。
 # 因此没有 [build-system] / [tool.setuptools] 段——不把 CorpAI 自身
@@ -33,9 +33,9 @@ dependencies = [
 
     # ===== 业务工具 =====
     "python-a2a>=0.5.0", # A2A 协议 + FastMCP 框架（一站式依赖，涵盖 A2AServer / FastMCP / create_fastapi_app）
-    "requests>=2.32.0",  # HTTP 客户端（调 Embedding / 和风天气 API）
+    "requests>=2.32.0",  # HTTP 客户端（调 Embedding / 内部 A2A / 测试）
     "pytz>=2025.0",      # 时区处理
-    "schedule>=1.2.0",   # 定时任务（天气数据定时爬取）
+    "schedule>=1.2.0",   # 定时任务（cron 风格调度）
     "python-dotenv>=1.0.0", # .env 文件加载
 ]
 

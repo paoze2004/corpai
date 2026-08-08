@@ -1,16 +1,19 @@
 """
-CorpAI —— 智能旅游助手核心包
+CorpAI —— 企业 AI Copilot 平台核心包
 
 包内模块：
     config           配置管理（环境变量、数据库、API 等）
-    create_logger    日志记录器
-    memory           对话记忆（短期/用户偏好/任务上下文）
-    main_prompts     提示模板管理
-    chat_service     核心对话服务（意图识别 + ReAct 编排）
-    api_server       FastAPI 后端入口
-    utils            工具集（日期格式化、天气爬虫等）
-    mcp_server       MCP 工具服务端（天气/票务/行程）
-    a2a_server       A2A 智能体服务端（天气/票务/行程）
+    logging          结构化日志
+    core/memory      对话记忆（6 层 MemoryPool,per-user）
+    core/prompts     提示模板(intent / planning / react / system)
+    platform/orchestrator  编排服务(IntentRecognizer / TaskPlanner / ReActRunner)
+    platform/auth    JWT / RBAC / scopes
+    platform/observability trace / log / metrics / call_record
+    platform/db      MySQL 连接池单例
+    platform/plugin_manager  entry_points 自动发现 + 注册表
+    api/app          FastAPI 后端入口(用户 SPA + admin/ + /api/chat)
+    api/admin_router 管理后台 5 页 API
+    utils/format     JSON encoder + strip_think
 """
 
 __version__ = "0.1.0"
