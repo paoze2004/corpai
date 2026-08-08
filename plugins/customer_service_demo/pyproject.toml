@@ -1,7 +1,7 @@
 [project]
 name = "corpai-plugin-customer-service-demo"
 version = "0.0.1"
-description = "Phase 3 脚手架 — entry_points 验证 plugin_manager.discover_all()"
+description = "Scaffold demo plugin — entry_points 验证 plugin_manager.discover_all()"
 requires-python = ">=3.11"
 dependencies = []
 
