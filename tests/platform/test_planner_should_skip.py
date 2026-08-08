@@ -1,8 +1,7 @@
 """
 TaskPlanner.should_skip 测试 — 验证拆分后行为与 ChatService._should_skip_planning 完全一致。
 
-锁定的 INDEPENDENT_INTENTS 集合(CorpAI/platform/orchestrator/planner.py):
-    {weather, flight, train, concert, attraction, car_rental, tour_group, insurance, trip_order}
+Phase 7 重置:INDEPENDENT_INTENTS 改为企业域 {hr, devops, faq},旅行意图全删。
 """
 from CorpAI.platform.orchestrator.planner import TaskPlanner, INDEPENDENT_INTENTS
 
@@ -32,8 +31,9 @@ class TestTaskPlannerShouldSkip:
         assert self.planner.should_skip([]) is True
 
     def test_single_known_intent_returns_true(self):
-        assert self.planner.should_skip(["weather"]) is True
-        assert self.planner.should_skip(["flight"]) is True
+        assert self.planner.should_skip(["hr"]) is True
+        assert self.planner.should_skip(["devops"]) is True
+        assert self.planner.should_skip(["faq"]) is True
 
     def test_single_complex_returns_true(self):
         assert self.planner.should_skip(["complex"]) is True
@@ -49,38 +49,43 @@ class TestTaskPlannerShouldSkip:
 
     # ─── 多意图(全部独立) ───
     def test_multiple_all_independent_returns_true(self):
-        assert self.planner.should_skip(["weather", "flight"]) is True
-        assert self.planner.should_skip(["weather", "attraction", "tour_group"]) is True
+        assert self.planner.should_skip(["hr", "devops"]) is True
+        assert self.planner.should_skip(["hr", "devops", "faq"]) is True
         assert self.planner.should_skip(list(INDEPENDENT_INTENTS)) is True
 
     # ─── 多意图(含非独立) ───
     def test_multiple_with_complex_returns_false(self):
-        assert self.planner.should_skip(["weather", "complex"]) is False
+        assert self.planner.should_skip(["hr", "complex"]) is False
 
     def test_multiple_with_order_returns_false(self):
-        assert self.planner.should_skip(["weather", "order"]) is False
+        assert self.planner.should_skip(["hr", "order"]) is False
 
     def test_multiple_with_out_of_scope_returns_false(self):
-        assert self.planner.should_skip(["weather", "out_of_scope"]) is False
+        assert self.planner.should_skip(["hr", "out_of_scope"]) is False
 
     def test_multiple_with_unknown_returns_false(self):
-        assert self.planner.should_skip(["weather", "foobar"]) is False
+        assert self.planner.should_skip(["hr", "foobar"]) is False
 
 
 class TestIndependentIntentsConstant:
-    """INDEPENDENT_INTENTS 常量锁定(9 个 intent)。"""
+    """INDEPENDENT_INTENTS 常量锁定(3 个企业 intent)。"""
 
-    def test_has_9_intents(self):
-        """独立意图集合恰好 9 个元素(防止遗漏/多写)。"""
-        assert len(INDEPENDENT_INTENTS) == 9
+    def test_has_3_intents(self):
+        """独立意图集合恰好 3 个元素(防止遗漏/多写)。"""
+        assert len(INDEPENDENT_INTENTS) == 3
 
     def test_required_intents_present(self):
         """必要 intent 都在集合内。"""
-        required = {
-            "weather", "flight", "train", "concert", "attraction",
-            "car_rental", "tour_group", "insurance", "trip_order"
-        }
+        required = {"hr", "devops", "faq"}
         assert INDEPENDENT_INTENTS == required
+
+    def test_travel_intents_removed(self):
+        """旅行意图(weather/flight/train/attraction/...)已从集合删除。"""
+        travel_intents = {
+            "weather", "flight", "train", "concert", "attraction",
+            "car_rental", "tour_group", "insurance", "trip_order",
+        }
+        assert INDEPENDENT_INTENTS & travel_intents == set()
 
     def test_complex_not_in_set(self):
         """complex 不在独立集合(否则会和 single_complex 返回 True 的现有行为冲突)。"""

@@ -1,6 +1,7 @@
 """
 ReActRunner 行为测试 — 验证拆分后行为与 ChatService.execute_step + ChatService.react_loop 完全一致。
 
+Phase 7 重置:intent 改为企业域 hr / devops / faq。
 注:不引入 pytest-asyncio 依赖,用 asyncio.run() 包装 async 测试。
    不直接 mock LLM,而用 langchain RunnableLambda 包装 fake 函数,这样
    `summary_prompt | llm` LangChain chain 能正常工作,并能记录调用。
@@ -57,33 +58,33 @@ class TestExecuteStep:
 
         async def go():
             return await runner.execute_step(
-                {"step": 1, "action": "查天气", "intent": "weather"},
-                {"weather": "北京明天天气"},
+                {"step": 1, "action": "查福利", "intent": "hr"},
+                {"hr": "公司有什么福利"},
             )
 
-        assert run_async(go()) == "weather:北京明天天气"
+        assert run_async(go()) == "hr:公司有什么福利"
 
     def test_query_fallback_to_messages(self):
         runner = make_runner()
 
         async def go():
             return await runner.execute_step(
-                {"step": 1, "action": "查天气", "intent": "weather"},
+                {"step": 1, "action": "查福利", "intent": "hr"},
                 {},
             )
 
-        assert run_async(go()) == "weather:原始查询"
+        assert run_async(go()) == "hr:原始查询"
 
     def test_empty_messages_fallback(self):
         runner = make_runner(messages=[])
 
         async def go():
             return await runner.execute_step(
-                {"step": 1, "intent": "weather"},
+                {"step": 1, "intent": "hr"},
                 {},
             )
 
-        assert run_async(go()) == "weather:"
+        assert run_async(go()) == "hr:"
 
 
 class TestReactLoopRun:
@@ -96,12 +97,12 @@ class TestReactLoopRun:
 
         async def go():
             return await runner.run(
-                [{"step": 1, "action": "查天气", "intent": "weather", "depends_on": 0}],
-                {"weather": "北京天气"},
+                [{"step": 1, "action": "查福利", "intent": "hr", "depends_on": 0}],
+                {"hr": "公司有什么福利"},
             )
 
         result = run_async(go())
-        assert result == "weather:北京天气"
+        assert result == "hr:公司有什么福利"
         assert calls == []  # 单步不调 LLM
 
     def test_multiple_steps_same_dep_runs_in_parallel(self):
@@ -112,10 +113,10 @@ class TestReactLoopRun:
         async def go():
             return await runner.run(
                 [
-                    {"step": 1, "action": "查天气", "intent": "weather", "depends_on": 0},
-                    {"step": 2, "action": "查机票", "intent": "flight", "depends_on": 0},
+                    {"step": 1, "action": "查福利", "intent": "hr", "depends_on": 0},
+                    {"step": 2, "action": "查工单", "intent": "devops", "depends_on": 0},
                 ],
-                {"weather": "北京天气", "flight": "北京到上海"},
+                {"hr": "公司有什么福利", "devops": "INC-001"},
             )
 
         result = run_async(go())
@@ -123,8 +124,8 @@ class TestReactLoopRun:
         assert len(calls) == 1
         all_obs_input = calls[0]
         # PromptValue 转 str 后含格式化文本
-        assert "weather:北京天气" in all_obs_input
-        assert "flight:北京到上海" in all_obs_input
+        assert "hr:公司有什么福利" in all_obs_input
+        assert "devops:INC-001" in all_obs_input
         # query 也注入
         assert "原始查询" in all_obs_input
 
@@ -136,18 +137,18 @@ class TestReactLoopRun:
         async def go():
             return await runner.run(
                 [
-                    {"step": 1, "action": "step1", "intent": "weather", "depends_on": 0},
-                    {"step": 2, "action": "step2", "intent": "flight", "depends_on": 1},
-                    {"step": 3, "action": "step3", "intent": "attraction", "depends_on": 1},
+                    {"step": 1, "action": "step1", "intent": "hr", "depends_on": 0},
+                    {"step": 2, "action": "step2", "intent": "devops", "depends_on": 1},
+                    {"step": 3, "action": "step3", "intent": "faq", "depends_on": 1},
                 ],
-                {"weather": "w", "flight": "f", "attraction": "a"},
+                {"hr": "h", "devops": "d", "faq": "f"},
             )
 
         result = run_async(go())
         assert result == "汇总回复"
         assert len(calls) == 1
         # 3 个 step 都被执行
-        for marker in ["weather:w", "flight:f", "attraction:a"]:
+        for marker in ["hr:h", "devops:d", "faq:f"]:
             assert marker in calls[0]
 
     def test_empty_steps_returns_fallback(self):
@@ -165,7 +166,7 @@ class TestReactLoopRun:
     def test_exception_in_step_caught_and_formatted(self):
         """组内某步骤抛异常 → '执行失败:{exc}' 注入到 all_observations。"""
         async def failing_executor(intent: str, query_str: str) -> str:
-            if intent == "weather":
+            if intent == "hr":
                 raise RuntimeError("API timeout")
             return f"ok:{query_str}"
 
@@ -175,10 +176,10 @@ class TestReactLoopRun:
         async def go():
             return await runner.run(
                 [
-                    {"step": 1, "intent": "weather", "depends_on": 0},
-                    {"step": 2, "intent": "flight", "depends_on": 0},
+                    {"step": 1, "intent": "hr", "depends_on": 0},
+                    {"step": 2, "intent": "devops", "depends_on": 0},
                 ],
-                {"weather": "w", "flight": "f"},
+                {"hr": "h", "devops": "d"},
             )
 
         result = run_async(go())
@@ -186,7 +187,7 @@ class TestReactLoopRun:
         all_obs = calls[0]
         assert "执行失败" in all_obs
         assert "API timeout" in all_obs
-        assert "ok:f" in all_obs
+        assert "ok:d" in all_obs
 
     def test_step_executor_called_with_intent_and_query(self):
         """验证 step_executor 收到正确的 (intent, query_str) 参数。"""
@@ -201,15 +202,15 @@ class TestReactLoopRun:
         async def go():
             return await runner.run(
                 [
-                    {"step": 1, "intent": "weather", "depends_on": 0},
-                    {"step": 2, "intent": "flight", "depends_on": 0},
+                    {"step": 1, "intent": "hr", "depends_on": 0},
+                    {"step": 2, "intent": "devops", "depends_on": 0},
                 ],
-                {"weather": "北京", "flight": "上海"},
+                {"hr": "年假", "devops": "INC-001"},
             )
 
         run_async(go())
-        assert ("weather", "北京") in captured
-        assert ("flight", "上海") in captured
+        assert ("hr", "年假") in captured
+        assert ("devops", "INC-001") in captured
 
 
 class TestReactLoopStepDescriptionFallback:
@@ -222,10 +223,10 @@ class TestReactLoopStepDescriptionFallback:
         async def go():
             return await runner.run(
                 [
-                    {"step": 1, "description": "详细描述", "action": "action", "intent": "weather", "depends_on": 0},
-                    {"step": 2, "description": "其他", "action": "x", "intent": "flight", "depends_on": 0},
+                    {"step": 1, "description": "详细描述", "action": "action", "intent": "hr", "depends_on": 0},
+                    {"step": 2, "description": "其他", "action": "x", "intent": "devops", "depends_on": 0},
                 ],
-                {"weather": "w", "flight": "f"},
+                {"hr": "h", "devops": "d"},
             )
 
         run_async(go())
@@ -239,10 +240,10 @@ class TestReactLoopStepDescriptionFallback:
         async def go():
             return await runner.run(
                 [
-                    {"step": 1, "action": "action描述", "intent": "weather", "depends_on": 0},
-                    {"step": 2, "action": "action2", "intent": "flight", "depends_on": 0},
+                    {"step": 1, "action": "action描述", "intent": "hr", "depends_on": 0},
+                    {"step": 2, "action": "action2", "intent": "devops", "depends_on": 0},
                 ],
-                {"weather": "w", "flight": "f"},
+                {"hr": "h", "devops": "d"},
             )
 
         run_async(go())
@@ -256,13 +257,13 @@ class TestReactLoopStepDescriptionFallback:
         async def go():
             return await runner.run(
                 [
-                    {"step": 1, "intent": "weather", "depends_on": 0},
-                    {"step": 2, "intent": "flight", "depends_on": 0},
+                    {"step": 1, "intent": "hr", "depends_on": 0},
+                    {"step": 2, "intent": "devops", "depends_on": 0},
                 ],
-                {"weather": "w", "flight": "f"},
+                {"hr": "h", "devops": "d"},
             )
 
         run_async(go())
-        # 无 description/action → "步骤1 (): weather:w"
-        assert "步骤1 (): weather:w" in calls[0]
-        assert "步骤2 (): flight:f" in calls[0]
+        # 无 description/action → "步骤1 (): hr:h"
+        assert "步骤1 (): hr:h" in calls[0]
+        assert "步骤2 (): devops:d" in calls[0]

@@ -33,31 +33,31 @@ class TestDuckType(unittest.TestCase):
         pool = MemoryPool(user_id='alice', session_id='s1', db_conn=None)
 
         # 7 个 set/update 方法
-        pool.add_message('user', '北京天气')
+        pool.add_message('user', '公司有什么福利')
         self.assertEqual(len(pool.short_term_messages), 1)
-        self.assertEqual(pool.short_term_messages[0]['content'], '北京天气')
+        self.assertEqual(pool.short_term_messages[0]['content'], '公司有什么福利')
 
-        pool.add_message('assistant', '晴 25 度')
+        pool.add_message('assistant', '五险一金 + 体检 + 培训等')
         self.assertEqual(len(pool.short_term_messages), 2)
 
-        # 文本格式 — IntentRecognizer/TaskPlanner/attraction_executor 用
+        # 文本格式 — IntentRecognizer/TaskPlanner/simple_step_executor 用
         text = pool.get_short_term_text()
-        self.assertIn('User: 北京天气', text)
-        self.assertIn('Assistant: 晴 25 度', text)
+        self.assertIn('User: 公司有什么福利', text)
+        self.assertIn('Assistant: 五险一金 + 体检 + 培训等', text)
 
         # 偏好路径
-        pool.update_profile({'seat_type': '二等座'})
-        self.assertEqual(pool.user_profile['seat_type'], '二等座')
-        self.assertIn('二等座', pool.get_profile_text())
+        pool.update_profile({'department': '研发'})
+        self.assertEqual(pool.user_profile['department'], '研发')
+        self.assertIn('研发', pool.get_profile_text())
 
         # 任务上下文
-        pool.update_task_context({'type': 'train'})
-        self.assertEqual(pool.current_task['type'], 'train')
+        pool.update_task_context({'type': 'hr'})
+        self.assertEqual(pool.current_task['type'], 'hr')
 
         # 实体提取(进程内)
-        pool.extract_entities('weather', '北京天气')
+        pool.extract_entities('hr', '公司有什么福利')
         self.assertEqual(len(pool.entity_history), 1)
-        self.assertEqual(pool.entity_history[0]['query'], '北京天气')
+        self.assertEqual(pool.entity_history[0]['query'], '公司有什么福利')
 
         # clear — 全部清空
         pool.clear()

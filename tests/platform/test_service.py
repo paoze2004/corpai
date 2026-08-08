@@ -4,11 +4,14 @@ OrchestratorService 行为测试 — 验证 7 模块协调正确。
 测试用 fake 模块验证 OrchestratorService 正确:
 - 调用 IntentRecognizer.extract()
 - 调用 TaskPlanner.should_skip() / plan()
-- 调用 ReActRunner.run() 或 simple_step_executor/attraction_executor
+- 调用 ReActRunner.run() 或 simple_step_executor
 - 调用 memory.add_message()
 - 处理 out_of_scope / follow_up / 异常
 
 注:不引入 pytest-asyncio,用 asyncio.run() 包装。
+
+Phase 7 清理:删除 attraction_executor 相关测试(旅行 plugin 已删);
+intent 改为企业域 hr / devops / faq。
 """
 import asyncio
 import json
@@ -88,15 +91,6 @@ def make_simple_step_executor(return_value="simple_result", captured=None):
     return executor
 
 
-def make_attraction_executor(return_value="attraction_result", captured=None):
-    """构造 attraction_executor async callable。"""
-    async def executor(query_str):
-        if captured is not None:
-            captured.append(query_str)
-        return return_value
-    return executor
-
-
 def make_service(
     intents=None,
     user_queries=None,
@@ -105,24 +99,20 @@ def make_service(
     plan=None,
     react_response="react_result",
     simple_return="simple_result",
-    attraction_return="attraction_result",
 ):
     """工厂:构造带所有 fake 的 OrchestratorService。"""
     from CorpAI.platform.orchestrator import OrchestratorService
 
     simple_captured = []
-    attraction_captured = []
 
     service = OrchestratorService(
         intent=FakeIntent(intents or [], user_queries, follow_up),
         planner=FakePlanner(should_skip, plan),
         react_runner=FakeReactRunner(react_response),
         simple_step_executor=make_simple_step_executor(simple_return, simple_captured),
-        attraction_executor=make_attraction_executor(attraction_return, attraction_captured),
         memory=FakeMemory(),
     )
     service._simple_captured = simple_captured
-    service._attraction_captured = attraction_captured
     return service
 
 
@@ -135,17 +125,17 @@ class TestChatOutOfScope:
     def test_out_of_scope_returns_followup(self):
         svc = make_service(
             intents=["out_of_scope"],
-            follow_up="这个问题超出我的能力范围",
+            follow_up="这个问题超出当前 Copilot 能力范围",
         )
 
         async def go():
             return await svc.chat("什么是宇宙的终极真理?")
         result = run_async(go())
-        assert result == "这个问题超出我的能力范围"
+        assert result == "这个问题超出当前 Copilot 能力范围"
         # 记录了 user + assistant 两条 message
         assert len(svc.memory.add_calls) == 2
         assert svc.memory.add_calls[0] == ("user", "什么是宇宙的终极真理?")
-        assert svc.memory.add_calls[1] == ("assistant", "这个问题超出我的能力范围")
+        assert svc.memory.add_calls[1] == ("assistant", "这个问题超出当前 Copilot 能力范围")
 
 
 class TestChatFollowup:
@@ -153,14 +143,14 @@ class TestChatFollowup:
 
     def test_followup_message_returns_directly(self):
         svc = make_service(
-            intents=["weather"],
-            follow_up="请告诉我您想查询哪个城市的天气",
+            intents=["hr"],
+            follow_up="请告诉我您想查询的具体福利/政策",
         )
 
         async def go():
-            return await svc.chat("查天气")
+            return await svc.chat("查福利")
         result = run_async(go())
-        assert result == "请告诉我您想查询哪个城市的天气"
+        assert result == "请告诉我您想查询的具体福利/政策"
         # planner 不应被调
         assert svc.planner.skip_calls == []
 
@@ -170,71 +160,42 @@ class TestChatSimplePath:
 
     def test_single_intent_uses_simple_executor(self):
         svc = make_service(
-            intents=["weather"],
-            user_queries={"weather": "北京明天天气"},
+            intents=["hr"],
+            user_queries={"hr": "公司有什么福利"},
             should_skip=True,
         )
 
         async def go():
-            return await svc.chat("北京天气")
+            return await svc.chat("公司有什么福利")
         result = run_async(go())
         assert result == "simple_result"
         # simple_executor 被调
-        assert svc._simple_captured == [("weather", "北京明天天气")]
+        assert svc._simple_captured == [("hr", "公司有什么福利")]
 
     def test_multiple_intents_joined_by_newline(self):
         svc = make_service(
-            intents=["weather", "flight"],
-            user_queries={"weather": "北京", "flight": "上海"},
+            intents=["hr", "faq"],
+            user_queries={"hr": "年假", "faq": "VPN"},
             should_skip=True,
         )
 
         async def go():
-            return await svc.chat("北京天气和上海机票")
+            return await svc.chat("年假和 VPN 怎么申请")
         result = run_async(go())
         # 多个 intent 用 \n\n 拼接
         assert result == "simple_result\n\nsimple_result"
-        assert ("weather", "北京") in svc._simple_captured
-        assert ("flight", "上海") in svc._simple_captured
-
-    def test_attraction_intent_uses_attraction_executor(self):
-        svc = make_service(
-            intents=["attraction"],
-            user_queries={"attraction": "北京景点推荐"},
-            should_skip=True,
-        )
-
-        async def go():
-            return await svc.chat("推荐北京景点")
-        result = run_async(go())
-        assert result == "attraction_result"
-        # attraction_executor 被调,simple_executor 不被调
-        assert svc._attraction_captured == ["北京景点推荐"]
-        assert svc._simple_captured == []
-
-    def test_mixed_attraction_and_normal_intents(self):
-        svc = make_service(
-            intents=["weather", "attraction"],
-            user_queries={"weather": "北京", "attraction": "北京景点"},
-            should_skip=True,
-        )
-
-        async def go():
-            return await svc.chat("北京")
-        result = run_async(go())
-        # weather → simple,attraction → attraction_executor
-        assert svc._simple_captured == [("weather", "北京")]
-        assert svc._attraction_captured == ["北京景点"]
+        assert ("hr", "年假") in svc._simple_captured
+        assert ("faq", "VPN") in svc._simple_captured
 
 
 class TestChatPlannerPath:
-    """规划路径:多 intent 触发 ReAct。"""
+    """规划路径:多 intent 含 order 等非独立 → 触发 ReAct。"""
 
     def test_need_plan_uses_react_runner(self):
-        steps = [{"step": 1, "intent": "weather", "depends_on": 0}]
+        steps = [{"step": 1, "intent": "hr", "depends_on": 0}]
         svc = make_service(
-            intents=["weather", "order"],
-            user_queries={"weather": "北京", "order": "订票"},
+            intents=["hr", "order"],
+            user_queries={"hr": "年假", "order": "申请年假"},
             should_skip=False,  # 含 order,需要 planning
             plan={"need_plan": True, "reason": "复杂", "steps": steps},
             react_response="react综合回复",
@@ -245,7 +206,7 @@ class TestChatPlannerPath:
         result = run_async(go())
         assert result == "react综合回复"
         # react_runner 被调
-        assert svc.react_runner.run_calls == [(steps, {"weather": "北京", "order": "订票"})]
+        assert svc.react_runner.run_calls == [(steps, {"hr": "年假", "order": "申请年假"})]
         # simple_executor 不应被调
         assert svc._simple_captured == []
 
@@ -265,7 +226,6 @@ class TestChatExceptionHandling:
             planner=FakePlanner(),
             react_runner=FakeReactRunner(),
             simple_step_executor=make_simple_step_executor(),
-            attraction_executor=make_attraction_executor(),
             memory=FakeMemory(),
         )
 
@@ -288,7 +248,6 @@ class TestChatExceptionHandling:
             planner=FakePlanner(),
             react_runner=FakeReactRunner(),
             simple_step_executor=make_simple_step_executor(),
-            attraction_executor=make_attraction_executor(),
             memory=FakeMemory(),
         )
 
@@ -304,16 +263,16 @@ class TestChatMemoryWrite:
 
     def test_records_user_and_assistant(self):
         svc = make_service(
-            intents=["weather"],
-            user_queries={"weather": "北京"},
+            intents=["hr"],
+            user_queries={"hr": "年假"},
             should_skip=True,
         )
 
         async def go():
-            return await svc.chat("北京天气")
+            return await svc.chat("年假")
         run_async(go())
         assert svc.memory.add_calls == [
-            ("user", "北京天气"),
+            ("user", "年假"),
             ("assistant", "simple_result"),
         ]
 
@@ -337,12 +296,12 @@ class TestChatStream:
     def test_simple_intent_yields_full_result(self):
         """Phase 1.6 简化版:yield 完整结果(无 token streaming)。"""
         svc = make_service(
-            intents=["weather"],
-            user_queries={"weather": "北京"},
+            intents=["hr"],
+            user_queries={"hr": "年假"},
             should_skip=True,
         )
 
-        chunks = collect_chunks(svc.chat_stream("北京天气"))
+        chunks = collect_chunks(svc.chat_stream("年假"))
         # 简化版只 yield 一次完整结果
         assert "".join(chunks) == "simple_result"
         # 仍然写 memory
@@ -357,17 +316,17 @@ class TestChatStream:
         assert "".join(chunks) == "超出范围"
 
     def test_planner_path_uses_react_runner(self):
-        steps = [{"step": 1, "intent": "weather", "depends_on": 0}]
+        steps = [{"step": 1, "intent": "hr", "depends_on": 0}]
         svc = make_service(
-            intents=["weather", "order"],
-            user_queries={"weather": "北京", "order": "订票"},
+            intents=["hr", "order"],
+            user_queries={"hr": "年假", "order": "申请"},
             should_skip=False,
             plan={"need_plan": True, "steps": steps},
             react_response="react流式回复",
         )
         chunks = collect_chunks(svc.chat_stream("复杂"))
         assert "".join(chunks) == "react流式回复"
-        assert svc.react_runner.run_calls == [(steps, {"weather": "北京", "order": "订票"})]
+        assert svc.react_runner.run_calls == [(steps, {"hr": "年假", "order": "申请"})]
 
     def test_exception_in_stream_yields_error(self):
         from CorpAI.platform.orchestrator import OrchestratorService
@@ -381,7 +340,6 @@ class TestChatStream:
             planner=FakePlanner(),
             react_runner=FakeReactRunner(),
             simple_step_executor=make_simple_step_executor(),
-            attraction_executor=make_attraction_executor(),
             memory=FakeMemory(),
         )
         chunks = collect_chunks(svc.chat_stream("test"))
