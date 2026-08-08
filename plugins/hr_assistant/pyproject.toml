@@ -1,0 +1,9 @@
+[project]
+name = "corpai-plugin-hr-assistant"
+version = "1.0.0"
+description = "Phase 5:HR 助手 — 保险方案比较 + 假期政策 + 缺勤申报"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.entry-points."platform.plugins"]
+hr_assistant = "hr_assistant.plugin:register"

@@ -1,7 +1,21 @@
 # ADR-005: RBAC 4 角色 + 多租户 + Fail-Closed
 
 ## 状态
-**Accepted** — 2026-08-06
+**Accepted → Implemented (Phase 3)** — 2026-08-06
+
+Phase 3 实施位置:
+- `CorpAI/platform/auth/` 6 文件(stdlib-only password+token+scope+audit+depends)
+- `CorpAI/api/admin_router.py` (6 端点 + audit log)
+- `sql/migrate_add_auth.sql` + `scripts/migrate_add_auth.py`
+- `scripts/bootstrap_super_admin.py`
+
+## Phase 3 修订记录(2026-08-06)
+
+| 改动 | 原 ADR-005 | Phase 3 实施 | 原因 |
+|------|------------|---------------|------|
+| 密码哈希 | `argon2-cffi` | `hashlib.pbkdf2_hmac('sha256', ..., 200_000)` | 用户决定"不引新 auth 依赖",用 stdlib 替代 |
+| JWT | `PyJWT` 库 | 自实现 `jwt_encode/jwt_decode`(HS256 + base64url + hmac) | 同上,stdlib-only |
+| 测试进度 | 未列 | 在 `tests/auth/` 加 6 文件,`make test-auth` / `make test-phase3` | 配套收尾 |
 
 ## 背景
 

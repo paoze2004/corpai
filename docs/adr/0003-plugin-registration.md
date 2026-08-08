@@ -1,7 +1,12 @@
 # ADR-003: 插件注册机制 — Python entry_points
 
 ## 状态
-**Accepted** — 2026-08-06
+**Accepted → Implemented (Phase 3)** — 2026-08-06
+
+Phase 3 实施位置:
+- `CorpAI/platform/plugin_manager.py` (Pydantic v2 PluginManifest + PluginRegistry + discover_all)
+- `CorpAI/api/admin_router.py` (GET /admin/api/plugins,POST .../enable)
+- `plugins/customer_service_demo/` (脚手架 entry_points demo)
 
 ## 背景
 

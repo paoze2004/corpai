@@ -9,10 +9,10 @@
 │                                                                            │
 │  ┌─────────────────── 内存层 (Memory) ───────────────────┐                │
 │  │                                                        │                │
-│  │  short_term_messages[]  ── 短期对话 (最多10条)         │                │
-│  │  user_profile{}         ── 用户偏好 (座位/舱位等)      │                │
-│  │  current_task{}         ── 当前任务上下文 (类型/城市)   │                │
-│  │  entity_history[]       ── 提取的实体历史 (最多50条)    │                │
+│  │  short_term_messages[]  ── 短期对话 (最多 10 条)        │                │
+│  │  user_profile{}         ── 用户偏好 KV                  │                │
+│  │  current_task{}         ── 当前任务上下文               │                │
+│  │  entity_history[]       ── 提取的实体历史 (最多 50 条)  │                │
 │  └────────────────────┬──────────────────────────────────┘                │
 │                       │ add / update / get                                 │
 │                       ▼                                                    │
@@ -92,6 +92,8 @@ import json
 import mysql.connector
 import pytz
 
+from CorpAI.logging import logger
+
 
 class ConversationMemory:
     """管理对话记忆的类，包括短期对话、用户偏好和任务上下文"""
@@ -105,7 +107,7 @@ class ConversationMemory:
         self._db_conn = None  # 数据库连接
 
     def set_db_connection(self, db_conn):
-        """设置数据库连接（由 ChatService 注入）"""
+        """设置数据库连接（由 OrchestratorService/build_default_service 注入）"""
         self._db_conn = db_conn
 
     def _ensure_db(self):
@@ -212,7 +214,8 @@ class ConversationMemory:
             self._db_conn.commit()
             cursor.close()
         except Exception as e:
-            print(f"保存用户偏好到数据库失败: {e}")
+            logger.warning(f"profile save failed: {e}")
+            raise  # Phase 2: loud-fail(ADR-006: ADR§Loud-Fail)
 
     def load_profile_from_db(self):
         """从数据库加载用户偏好"""
@@ -244,7 +247,8 @@ class ConversationMemory:
             self._db_conn.commit()
             cursor.close()
         except Exception as e:
-            print(f"保存查询实体到数据库失败: {e}")
+            logger.warning(f"entity save failed: {e}")
+            raise  # Phase 2: loud-fail
 
     def load_entities_from_db(self, limit: int = 50):
         """从数据库加载查询历史，按时间倒序取最近N条"""
@@ -294,7 +298,8 @@ class ConversationMemory:
             self._db_conn.commit()
             cursor.close()
         except Exception as e:
-            print(f"保存短期对话到数据库失败: {e}")
+            logger.warning(f"messages save failed: {e}")
+            raise  # Phase 2: loud-fail
 
     def load_messages_from_db(self):
         """从数据库加载短期对话"""
@@ -328,4 +333,5 @@ class ConversationMemory:
             self._db_conn.commit()
             cursor.close()
         except Exception as e:
-            print(f"清空数据库记忆失败: {e}")
+            logger.warning(f"memory clear failed: {e}")
+            raise  # Phase 2: loud-fail (ADR-006 §Loud-Fail)

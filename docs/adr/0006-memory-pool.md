@@ -1,7 +1,15 @@
 # ADR-006: MemoryPool 6 层 + 向后兼容迁移
 
 ## 状态
-**Accepted** — 2026-08-06
+**Accepted + Phase 2 已实施** — 2026-08-06
+
+Phase 2 实际落地文件:
+- `CorpAI/platform/db.py` — DatabasePool 单例
+- `CorpAI/platform/orchestrator/memory_gateway.py` — MemoryPool 类(5 层,Layer 6 推迟)
+- `CorpAI/core/memory.py:214/246/296/331` — 4 处 silent-fail → loud-fail
+- `sql/migrate_add_user_id.sql` + `scripts/migrate_add_user_id.py` — DDL 迁移
+- `CorpAI/platform/wiring.py` — `_make_memory_pool` 注入;tools/* / utils/crawler 改用 DatabasePool
+- `tests/memory_pool/` — 6 文件(Layer 1-5 + duck-type)
 
 ## 背景
 

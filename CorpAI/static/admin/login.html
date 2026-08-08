@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin 登录 — CorpAI</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<div class="login-container">
+    <div class="login-box">
+        <h1>🛡️ CorpAI Admin</h1>
+        <div id="alert"></div>
+        <div class="form-group">
+            <label>用户名</label>
+            <input id="username" type="text" placeholder="admin" autocomplete="username" required>
+        </div>
+        <div class="form-group">
+            <label>密码</label>
+            <input id="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button id="loginBtn" style="width:100%;">登 录</button>
+        <p class="muted" style="text-align:center; margin-top:16px;">
+            首次部署用 <code>uv run python scripts/bootstrap_super_admin.py admin</code> 创建。
+        </p>
+    </div>
+</div>
+<script>
+const show = (msg, type = 'error') => {
+    document.getElementById('alert').innerHTML =
+        `<div class="alert alert-${type}">${msg}</div>`;
+};
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    if (!username || !password) { show('用户名和密码必填'); return; }
+
+    try {
+        const r = await fetch(`/admin/api/login?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`, { method: 'POST' });
+        const body = await r.json();
+        if (!r.ok) { show(body.detail || `登录失败 ${r.status}`); return; }
+        localStorage.setItem('admin_token', body.access_token);
+        localStorage.setItem('admin_role', body.role);
+        localStorage.setItem('admin_username', body.username);
+        window.location.href = '/admin/index.html';
+    } catch (e) { show(`网络错误: ${e.message}`); }
+});
+
+document.getElementById('password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('loginBtn').click();
+});
+
+// 已登录直接跳走
+if (localStorage.getItem('admin_token')) {
+    fetch('/admin/api/users', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('admin_token') } })
+        .then(r => { if (r.ok) window.location.href = '/admin/index.html'; });
+}
+</script>
+</body>
+</html>

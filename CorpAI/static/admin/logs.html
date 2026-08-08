@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Audit Logs — CorpAI Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<div class="header">
+    <h1>🛡️ CorpAI Admin</h1>
+    <span class="muted" id="who"></span>
+    <span class="spacer"></span>
+    <button onclick="logout()">退出</button>
+    <a href="/admin/index.html">← 返回</a>
+</div>
+<div class="nav">
+    <a href="/admin/agents.html">Agents</a>
+    <a href="/admin/tools.html">Tools</a>
+    <a href="/admin/users.html">Users</a>
+    <a href="/admin/logs.html" class="active">Logs</a>
+    <a href="/admin/metrics.html">Metrics</a>
+</div>
+
+<div class="container">
+    <h2 style="color:#e94560; margin-bottom:16px;">审计日志</h2>
+    <div class="panel">
+        <div class="form-row mb-12">
+            <div><label>user_id 过滤</label><input id="filter" placeholder="(空 = 全部)"></div>
+            <div><label>每页</label><input id="size" type="number" value="20" min="1" max="200"></div>
+        </div>
+        <button onclick="load(1)">查询</button>
+    </div>
+    <div class="panel" id="content">加载中...</div>
+</div>
+
+<script src="/admin/admin.js"></script>
+<script>
+document.getElementById('who').textContent =
+    (localStorage.getItem('admin_username') || '?') + ' (' + (localStorage.getItem('admin_role') || '?') + ')';
+
+let currentPage = 1;
+
+async function load(page) {
+    currentPage = page;
+    const filter = document.getElementById('filter').value.trim();
+    const size = parseInt(document.getElementById('size').value || '20', 10);
+    const q = new URLSearchParams({ page, size });
+    if (filter) q.set('user_id', filter);
+    try {
+        const data = await apiFetch('/logs?' + q.toString());
+        if (!data.data || data.data.length === 0) {
+            document.getElementById('content').innerHTML = '<p class="muted">无日志</p>';
+            return;
+        }
+        const html = renderTable(data.data, [
+            { key: 'ts', title: '时间', render: r => fmtTime(r.ts) },
+            { key: 'user_id', title: '用户' },
+            { key: 'action', title: '动作' },
+            {
+                key: 'result', title: '结果',
+                render: r => `<span class="badge badge-${r.result === 'allow' ? 'allow' : 'deny'}">${r.result}</span>`
+            },
+            { key: 'target', title: '目标' },
+            { key: 'ip', title: 'IP' },
+            {
+                key: 'reason', title: '原因',
+                render: r => r.reason
+                    ? `<span class="pre" style="display:inline-block;padding:2px 6px;">${r.reason}</span>`
+                    : ''
+            },
+        ]);
+        const totalPages = Math.ceil(data.total / size);
+        const pages = [];
+        for (let p = 1; p <= totalPages && p <= 20; p++) pages.push(p);
+        document.getElementById('content').innerHTML = html +
+            `<div class="row-flex mt-12">
+                <span class="muted">共 ${data.total} 条 · 第 ${page} / ${totalPages || 1} 页</span>
+                <span style="flex:1"></span>
+                ${pages.map(p => `<button class="btn-secondary" onclick="load(${p})" style="margin-left:4px;${p === page ? 'border-color:#e94560;' : ''}">${p}</button>`).join('')}
+            </div>`;
+    } catch (e) {
+        document.getElementById('content').innerHTML =
+            `<div class="alert alert-error">${e.message}</div>`;
+    }
+}
+
+load(1);
+</script>
+</body>
+</html>

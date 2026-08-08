@@ -1,7 +1,9 @@
 # ADR-007: 管理后台保持 Vanilla JS,不引入框架
 
 ## 状态
-**Accepted** — 2026-08-06
+**Accepted → Implemented (Phase 3)** — 2026-08-06
+
+Phase 3 实施位置:`CorpAI/static/admin/`(admin.css + admin.js + 6 个 HTML,共 ~678 LOC,复用 static/index.html 的 dark theme 调色板,无 React/Vue)。
 
 ## 背景
 

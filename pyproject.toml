@@ -17,6 +17,9 @@ dependencies = [
     "uvicorn[standard]>=0.35.0", # ASGI 服务器（含 httptools / uvloop / websockets 推荐依赖）
     "pydantic>=2.0",             # 数据校验（虽然 FastAPI 间接依赖，但代码里直接 import，应显式声明）
 
+    # ===== 可观测性（Phase 4）=====
+    "prometheus-client>=0.20",   # /metrics 端点 + Counter/Histogram 指标
+
     # ===== LLM 编排 =====
     # 代码使用 langchain 0.3.x API（create_tool_calling_agent / AgentExecutor），
     # 锁住 <1.0 防止 uv 升到 1.x 后 API 不兼容

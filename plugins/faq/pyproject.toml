@@ -1,0 +1,9 @@
+[project]
+name = "corpai-plugin-faq"
+version = "1.0.0"
+description = "Phase 5:FAQ RAG — 跨企业文档语义检索(Milvus)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.entry-points."platform.plugins"]
+faq = "faq.plugin:register"

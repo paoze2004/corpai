@@ -45,6 +45,16 @@ def mcp_services_available():
 
 
 @pytest.fixture(scope="session")
+def database_pool_available():
+    """Phase 2:DatabasePool 单例健康检查 — 区别 database_available 的 raw ping."""
+    try:
+        from CorpAI.platform.db import DatabasePool
+        return DatabasePool.get().healthcheck()
+    except Exception:
+        return False
+
+
+@pytest.fixture(scope="session")
 def database_available():
     """检查数据库是否可用"""
     try:

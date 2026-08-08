@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Metrics — CorpAI Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<div class="header">
+    <h1>🛡️ CorpAI Admin</h1>
+    <span class="muted" id="who"></span>
+    <span class="spacer"></span>
+    <button onclick="logout()">退出</button>
+    <a href="/admin/index.html">← 返回</a>
+</div>
+<div class="nav">
+    <a href="/admin/agents.html">Agents</a>
+    <a href="/admin/tools.html">Tools</a>
+    <a href="/admin/users.html">Users</a>
+    <a href="/admin/logs.html">Logs</a>
+    <a href="/admin/metrics.html" class="active">Metrics</a>
+</div>
+
+<div class="container">
+    <h2 style="color:#e94560; margin-bottom:16px;">平台指标 <span class="muted">(Phase 3 占位 — Phase 4 接 Prometheus)</span></h2>
+
+    <div class="panel">
+        <h3 style="margin-bottom:12px;">核心计数</h3>
+        <div id="metrics">加载中...</div>
+    </div>
+
+    <div class="panel">
+        <h3 style="margin-bottom:12px;">用户 vs 角色分布</h3>
+        <div id="roleDist">加载中...</div>
+    </div>
+
+    <div class="panel">
+        <h3 style="margin-bottom:12px;">近期审计 vs 结果</h3>
+        <div id="auditDist">加载中...</div>
+    </div>
+</div>
+
+<script src="/admin/admin.js"></script>
+<script>
+document.getElementById('who').textContent =
+    (localStorage.getItem('admin_username') || '?') + ' (' + (localStorage.getItem('admin_role') || '?') + ')';
+
+(async () => {
+    try {
+        // Phase 4:/metrics 返 Prometheus 文本 — textContent 防 HTML 注入
+        const exposition = await apiFetch('/metrics');
+        const pre = document.createElement('pre');
+        pre.className = 'metrics-exposition';
+        pre.textContent = exposition;
+        document.getElementById('metrics').replaceChildren(pre);
+    } catch (e) { document.getElementById('metrics').innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+
+    try {
+        const users = await apiFetch('/users');
+        const dist = {};
+        (users.data || []).forEach(u => { dist[u.role] = (dist[u.role] || 0) + 1; });
+        document.getElementById('roleDist').innerHTML =
+            Object.keys(dist).length === 0
+                ? '<p class="muted">无</p>'
+                : `<table>${Object.entries(dist).map(([r,c]) => `<tr><th>${r}</th><td>${c}</td></tr>`).join('')}</table>`;
+    } catch (e) { document.getElementById('roleDist').innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+
+    try {
+        const logs = await apiFetch('/logs?page=1&size=100');
+        const dist = { allow: 0, deny: 0, other: 0 };
+        (logs.data || []).forEach(l => {
+            if (l.result === 'allow') dist.allow++;
+            else if (l.result === 'deny') dist.deny++;
+            else dist.other++;
+        });
+        document.getElementById('auditDist').innerHTML = `
+            <table>
+                <tr><th>allow(近 100 条)</th><td><span class="badge badge-allow">${dist.allow}</span></td></tr>
+                <tr><th>deny</th><td><span class="badge badge-deny">${dist.deny}</span></td></tr>
+                <tr><th>other</th><td>${dist.other}</td></tr>
+            </table>
+        `;
+    } catch (e) { document.getElementById('auditDist').innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+})();
+</script>
+</body>
+</html>

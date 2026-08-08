@@ -1,34 +1,38 @@
 """
-OrchestratorService — 调度核心(Phase 1.6 唯一协调器)。
+OrchestratorService — 调度核心(ADR-004 唯一 high-level 入口)。
 
-设计原则(ADR-004):
-- OrchestratorService 是唯一 high-level 入口
-- 不直接调 LLM/Agent,只协调 5 个模块
+设计原则:
+- OrchestratorService 是唯一 high-level 入口(api/app.py 直接消费)
+- 不直接调 LLM/Agent/A2A,只协调 5 个模块
 - 模块边界严格(intent/planner/react_loop/streaming/外部 step_executor)
 - DI 注入所有依赖(不依赖全局 config)
+- 业务接线(A2A 网络 / ChatOpenAI / DB 加载)在 platform/wiring.py 组合根
 
 依赖注入:
 - intent: IntentRecognizer(意图识别)
 - planner: TaskPlanner(skip heuristic + plan)
 - react_runner: ReActRunner(ReAct 执行 + 汇总)
 - simple_step_executor: async (intent, query_str) → str
-    简单路径上,单步执行 callable(由 Phase 1.7 chat.py alias 提供具体实现)
+    简单路径上,非 attraction 单步执行(由 wiring.py 提供 closure)
 - attraction_executor: async (query_str) → str
-    attraction 意图不走 A2A,直接调 LLM(由 Phase 1.7 提供)
+    attraction 意图直接调 LLM 生成推荐(不走 A2A)(由 wiring.py 提供 closure)
 - memory: 任何 duck-typed(add_message / get_short_term_text / ...)
+- agent_card_provider: 可选 Callable[[], list[dict]],由 wiring.py 注入真实 A2A provider
 
 未来扩展(Phase 2+):
 - memory: 替换为 MemoryGateway(per-user scoping)
 - simple_step_executor: 替换为 ToolsGateway(插件化)
+- agent_card_provider: 同样由 ToolsGateway 提供
 
-chat() 与 chat_stream() 行为:
-- 等价于 ChatService.chat + ChatService.chat_stream(chat.py:716-953)
-- intent → planner → execute → memory 写入 → 返回
+App 兼容门面(Phase 1.7 从 ChatService 迁移过来):
+- get_memory_state / clear_memory / update_user_profile:委托给 self.memory
+- get_agent_cards:委托给注入的 provider
 """
 import json
 from typing import Any, Awaitable, Callable
 
 from CorpAI.logging import logger
+from CorpAI.platform.observability.trace import start_span
 from CorpAI.platform.orchestrator.intent import IntentRecognizer
 from CorpAI.platform.orchestrator.planner import TaskPlanner
 from CorpAI.platform.orchestrator.react_loop import ReActRunner
@@ -37,6 +41,8 @@ from CorpAI.platform.orchestrator.react_loop import ReActRunner
 # 类型别名
 SimpleStepExecutor = Callable[[str, str], Awaitable[str]]
 AttractionExecutor = Callable[[str], Awaitable[str]]
+# A2A Agent Card 同步供应者 — 由 wiring.py 注入,OrchestratorService 不直接持有 AgentNetwork
+AgentCardProvider = Callable[[], list[dict]]
 
 
 class OrchestratorService:
@@ -54,6 +60,7 @@ class OrchestratorService:
         simple_step_executor: SimpleStepExecutor,
         attraction_executor: AttractionExecutor,
         memory: Any,
+        agent_card_provider: AgentCardProvider | None = None,
     ):
         """
         参数:
@@ -65,6 +72,8 @@ class OrchestratorService:
             attraction_executor: async (query_str) → str
                 attraction 意图直接调 LLM 生成推荐(不走 A2A)
             memory: 记忆对象,需 .add_message() / .get_short_term_text()
+            agent_card_provider: 可选,返回 A2A Agent Card 列表的同步 callable
+                (Phase 1.7 用,Phase 3 替换为 ToolsGateway 提供者)。未注入时空列表。
         """
         self.intent = intent
         self.planner = planner
@@ -72,6 +81,63 @@ class OrchestratorService:
         self.simple_step_executor = simple_step_executor
         self.attraction_executor = attraction_executor
         self.memory = memory
+        # agent_card_provider 注入;未注入 → 空列表,API 层调用 get_agent_cards() 返回 []
+        self._agent_card_provider: AgentCardProvider = (
+            agent_card_provider if agent_card_provider is not None else (lambda: [])
+        )
+
+    # ════════════════════════════════════════════════════════════════
+    # App 兼容门面(Phase 1.7,从 ChatService 搬过来)
+    # — api/app.py 的 4 个非 chat 端点(get/clear/update/get_cards)
+    # — 这些方法名/签名与原 ChatService 完全一致,零行为变化
+    # ════════════════════════════════════════════════════════════════
+    def get_memory_state(self) -> dict:
+        """
+        获取当前记忆状态摘要(短期消息/偏好/任务/实体历史)。
+
+        等价于 ChatService.get_memory_state(原 core/chat.py:834-853)。
+        """
+        return {
+            "short_term_messages": [
+                {
+                    "role": "用户" if m["role"] == "user" else "助手",
+                    "content": m["content"],
+                    "timestamp": m["timestamp"],
+                }
+                for m in self.memory.short_term_messages[-5:]
+            ],
+            "user_profile": self.memory.user_profile,
+            "current_task": self.memory.current_task,
+            "entity_history": self.memory.entity_history[-5:],
+        }
+
+    def clear_memory(self) -> None:
+        """
+        清空所有记忆(短期/偏好/任务/实体,含 DB 三张表)。
+
+        等价于 ChatService.clear_memory(原 core/chat.py:855-864)。
+        原代码中 self.messages.clear() / self.conversation_history reset 不再需要
+        (OrchestratorService 不再维护这两份冗余状态,内存里只有 self.memory)。
+        """
+        self.memory.clear()
+
+    def update_user_profile(self, profile: dict) -> None:
+        """
+        合并更新用户偏好(新增/覆盖,不删除已有项),持久化到 DB。
+
+        等价于 ChatService.update_user_profile(原 core/chat.py:420-429)。
+        """
+        self.memory.update_profile(profile)
+        logger.info(f"更新用户偏好: {profile}")
+
+    def get_agent_cards(self) -> list[dict]:
+        """
+        获取 A2A 代理卡片列表(name/skills/description/url/status)。
+
+        等价于 ChatService.get_agent_cards(原 core/chat.py:803-832)。
+        数据由 wiring.py 注入的 provider 提供;未注入时返回 []。
+        """
+        return self._agent_card_provider()
 
     # ════════════════════════════════════════════════════════════════
     # chat() — 非流式入口
@@ -81,60 +147,67 @@ class OrchestratorService:
         处理用户输入,返回完整回复。
 
         完全等价于 ChatService.chat(chat.py:716-813)。
+
+        Phase 4:整个 chat() 包在 start_span("chat") 里 — 落 call_records,
+        metrics 通过 LLM/A2A spans 自动累计,trace_id 由 HTTP middleware 注入。
         """
         # 记录用户消息
-        self.memory.add_message("user", user_input)
+        with start_span("chat", {"input_len": len(user_input), "mode": "sync"}) as span:
+            self.memory.add_message("user", user_input)
 
-        try:
-            # 1. 意图识别
-            intents, user_queries, follow_up_message = self.intent.extract(user_input)
+            try:
+                # 1. 意图识别
+                intents, user_queries, follow_up_message = self.intent.extract(user_input)
+                span.set_attr("intents", intents)
 
-            # 2. 处理特殊情况
-            if "out_of_scope" in intents:
-                response = follow_up_message
-            elif follow_up_message != "":
-                response = follow_up_message
-            else:
-                # 3. 任务规划(启发式跳过)
-                if self.planner.should_skip(intents):
-                    plan = {"need_plan": False, "reason": "启发式判断:任务简单,可直接执行", "steps": []}
-                    logger.info(f"跳过规划: {plan['reason']}")
+                # 2. 处理特殊情况
+                if "out_of_scope" in intents:
+                    response = follow_up_message
+                elif follow_up_message != "":
+                    response = follow_up_message
                 else:
-                    plan = self.planner.plan(intents, user_queries)
-                need_plan = plan.get("need_plan", False)
-                logger.info(f"规划结果: need_plan={need_plan}, reason={plan.get('reason', '')}")
+                    # 3. 任务规划(启发式跳过)
+                    if self.planner.should_skip(intents):
+                        plan = {"need_plan": False, "reason": "启发式判断:任务简单,可直接执行", "steps": []}
+                        logger.info(f"跳过规划: {plan['reason']}")
+                    else:
+                        plan = self.planner.plan(intents, user_queries)
+                    need_plan = plan.get("need_plan", False)
+                    logger.info(f"规划结果: need_plan={need_plan}, reason={plan.get('reason', '')}")
 
-                # 4. 执行
-                if need_plan:
-                    steps = plan.get("steps", [])
-                    response = await self.react_runner.run(steps, user_queries)
-                else:
-                    # 简单任务:逐个 intent 串行执行
-                    responses: list[str] = []
-                    for intent in intents:
-                        logger.info(f"处理意图:{intent}")
-                        query_str = user_queries.get(intent, "")
-                        if intent == "attraction":
-                            result = await self.attraction_executor(query_str)
-                        else:
-                            result = await self.simple_step_executor(intent, query_str)
-                        responses.append(result)
-                    response = "\n\n".join(responses)
+                    # 4. 执行
+                    if need_plan:
+                        steps = plan.get("steps", [])
+                        response = await self.react_runner.run(steps, user_queries)
+                    else:
+                        # 简单任务:逐个 intent 串行执行
+                        responses: list[str] = []
+                        for intent in intents:
+                            logger.info(f"处理意图:{intent}")
+                            query_str = user_queries.get(intent, "")
+                            if intent == "attraction":
+                                result = await self.attraction_executor(query_str)
+                            else:
+                                result = await self.simple_step_executor(intent, query_str)
+                            responses.append(result)
+                        response = "\n\n".join(responses)
 
-            # 5. 记录助手回复
-            self.memory.add_message("assistant", response)
-            return response
+                # 5. 记录助手回复
+                self.memory.add_message("assistant", response)
+                return response
 
-        except json.JSONDecodeError as e:
-            logger.error(f"意图识别JSON解析失败")
-            error_message = f"意图识别JSON解析失败:{str(e)}。请重试。"
-            self.memory.add_message("assistant", error_message)
-            return error_message
-        except Exception as e:
-            logger.error(f"处理异常: {str(e)}")
-            error_message = f"处理失败:{str(e)}。请重试。"
-            self.memory.add_message("assistant", error_message)
-            return error_message
+            except json.JSONDecodeError as e:
+                logger.error(f"意图识别JSON解析失败")
+                span.end_err(f"json_decode: {e}")
+                error_message = f"意图识别JSON解析失败:{str(e)}。请重试。"
+                self.memory.add_message("assistant", error_message)
+                return error_message
+            except Exception as e:
+                logger.error(f"处理异常: {str(e)}")
+                span.end_err(str(e))
+                error_message = f"处理失败:{str(e)}。请重试。"
+                self.memory.add_message("assistant", error_message)
+                return error_message
 
     # ════════════════════════════════════════════════════════════════
     # chat_stream() — 流式入口

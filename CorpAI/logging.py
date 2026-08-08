@@ -1,51 +1,22 @@
 """
 需求：为CorpAI项目创建和配置日志记录器
-思路步骤：
-1. 导入必要的模块（logging、os、Config）
-2. 定义setup_logger函数配置日志记录器
-3. 创建日志文件夹（如果不存在）
-4. 获取并配置日志记录器（设置级别、防止重复输出）
-5. 定义日志格式
-6. 创建控制台处理器（输出INFO级别日志）
-7. 创建文件处理器（输出DEBUG级别日志）
-8. 将处理器添加到日志记录器中（避免重复添加）
-9. 初始化并返回配置好的日志记录器
-10. 创建项目的全局日志记录器实例
+
+Phase 4:delegate to platform.observability.log:setup_json_logger。
+保持 setup_logger(name, log_file=...) 入口形态不变,17 个业务文件零改。
+
+输出格式从纯文本 (例如 "CorpAI - 2026-... - INFO - message")
+升级为每行 JSON ({"ts":..., "level":"INFO", "trace_id":..., "msg":...})。
+trace_id/span_id 通过 TraceContextFilter 自动从 contextvars 注入。
 """
 import logging
-import os
 
 from CorpAI.config import Config
+from CorpAI.platform.observability.log import setup_json_logger
 
 
 def setup_logger(name, log_file='logs/app.log'):
-    # 创建日志文件夹
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    """Phase 4:委托给 setup_json_logger — JSON 输出 + trace_id 自动注入。"""
+    return setup_json_logger(name, log_file)
 
-    # 获取日志记录器
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    # 防止重复输出的关键！
-    logger.propagate = False
-
-    # 定义日志格式
-    formatter = logging.Formatter('%(name)s - %(asctime)s - %(levelname)s - %(message)s')
-
-    # 创建控制台处理器
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)  # 每个日志处理器可以单独设置日志级别，但是这个日志级别必须高于或等于处理器级别
-
-    # 创建文件处理器
-    file_handler = logging.FileHandler(filename=log_file, encoding="utf-8", mode="a")
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.DEBUG)
-
-    # 将处理器添加到日志记录器中
-    if not logger.handlers:  # 先进行判断，再进行添加。避免重复添加处理器
-        logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
-
-    return logger
 
 logger = setup_logger('CorpAI', Config().log_file)

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>CorpAI Admin 控制台</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<div class="header">
+    <h1>🛡️ CorpAI Admin</h1>
+    <span class="muted" id="who"></span>
+    <span class="spacer"></span>
+    <button onclick="logout()">退出登录</button>
+    <a href="/" target="_blank">前台聊天 →</a>
+</div>
+<div class="nav">
+    <a href="/admin/agents.html">Agents / Plugins</a>
+    <a href="/admin/tools.html">Tools</a>
+    <a href="/admin/users.html">Users</a>
+    <a href="/admin/logs.html">Audit Logs</a>
+    <a href="/admin/metrics.html">Metrics</a>
+</div>
+
+<div class="container">
+    <h2 style="color:#e94560; margin-bottom:16px;">概览</h2>
+
+    <div class="panel">
+        <h3 style="margin-bottom:12px;">平台指标</h3>
+        <div id="metrics">加载中...</div>
+    </div>
+
+    <div class="panel">
+        <h3 style="margin-bottom:12px;">最近 5 条审计日志</h3>
+        <div id="recentLogs">加载中...</div>
+    </div>
+</div>
+
+<script src="/admin/admin.js"></script>
+<script>
+const username = localStorage.getItem('admin_username') || '?';
+const role = localStorage.getItem('admin_role') || '?';
+document.getElementById('who').textContent = `${username} (${role})`;
+
+(async () => {
+    try {
+        // Phase 4:/metrics 端点返 Prometheus 文本,改用 /plugins + /users 拿计数
+        const [plugins, users] = await Promise.all([
+            apiFetch('/plugins'),
+            apiFetch('/users'),
+        ]);
+        document.getElementById('metrics').innerHTML = `
+            <div class="row-flex">
+                <div><span class="badge badge-success">已注册插件</span> <strong>${plugins.total}</strong></div>
+                <div><span class="badge badge-success">活跃用户</span> <strong>${users.total}</strong></div>
+            </div>
+            <p class="muted mt-12">完整指标见 <a href="/admin/metrics.html">Metrics</a> 标签(Prometheus 文本)。</p>
+        `;
+        const logs = await apiFetch('/logs?page=1&size=5');
+        const rows = (logs.data || []).map(l => `
+            <tr>
+                <td>${fmtTime(l.ts)}</td>
+                <td>${l.user_id}</td>
+                <td><span class="badge badge-${l.result === 'allow' ? 'allow' : 'deny'}">${l.result}</span></td>
+                <td>${l.action}</td>
+                <td>${l.target || ''}</td>
+            </tr>`).join('');
+        document.getElementById('recentLogs').innerHTML = `
+            <table><thead><tr><th>时间</th><th>用户</th><th>结果</th><th>动作</th><th>目标</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5" class="muted">无</td></tr>'}</tbody></table>
+        `;
+    } catch (e) {
+        document.getElementById('metrics').innerHTML =
+            `<div class="alert alert-error">加载失败: ${e.message}</div>`;
+        if (e.message.includes('unauthorized')) return;
+    }
+})();
+</script>
+</body>
+</html>

@@ -7,11 +7,11 @@
 
 ## Context
 
-**业务方向**:CorpAI 当前是一个面向旅游场景的中文聊天助手(`README.md:1-3`),包含 3 个硬编码业务(天气/票务/行程)。本项目把它转型为**企业 AI Copilot 平台** —— 一个可插拔的多 Agent 中台,支持企业内部多业务接入(客服/HR/研发/知识库等)。
+**业务方向**:CorpAI 原是一个面向旅游场景的中文聊天助手,经过 12 周重构转型为**企业 AI Copilot 平台** —— 一个可插拔的多 Agent 中台,支持企业内部多业务接入(HR / 研发 / 知识库等)。
 
 **工程标准**:对齐"企业工程项目"标准,需要 RBAC 权限、可观测性、CI/CD、管理后台四项能力。当前项目在以下方面严重不足:
 - 无认证/无 CORS(`api/app.py:26` 裸 FastAPI,零信任边界)
-- `ChatService` 单文件 880 行 11 方法(`core/chat.py:185-1063`),零测试覆盖
+- ~~`ChatService` 单文件 880 行 11 方法(`core/chat.py:185-1063`),零测试覆盖~~ → **Phase 1.7 已完成**:`core/chat.py` 已删除,编排迁到 `platform/orchestrator/service.py`(5 模块)+ `platform/wiring.py`(组合根),详见 ADR-0004
 - 3 个 agent 各自手写 30+ 行相同的 HTTP 桥接(`agents/weather.py:133-152`、`agents/ticket.py:224-243`、`agents/trip.py:170-190`)避开 `to_langchain_tool` bug
 - MySQL/Milvus/intent-mapping 硬编码(`config.py:45-99`)
 - 全局单例 `ConversationMemory` 无 user_id 区分(`core/memory.py:99-105`)
@@ -187,7 +187,7 @@ platform/orchestrator/
 - **新增** `plugins/customer_service/{plugin.py,mcp_server.py,prompts.py}`(从 `agents/weather.py` + `agents/ticket.py` + `tools/weather.py` + `tools/ticket.py` 改造)
 - **新增** `plugins/hr_assistant/{plugin.py,faq_loader.py}`(从 `tools/trip.py:477-512` `query_insurance` 改造)
 - **新增** `plugins/devops_copilot/{plugin.py,k8s_adapter.py,jira_adapter.py}`(从 `tools/trip.py:394-425` 改造)
-- **新增** `plugins/faq/{plugin.py,ingest.py,retriever.py}`(从 `tools/trip.py:88-287` + `scripts/init_tour_group_rag.py` 改造)
+- **新增** `plugins/faq/{plugin.py,ingest.py,retriever.py}`(从 `tools/trip.py:88-287` 改造 RAG,Phase 7 已删旅游脚本)
 
 ### Phase 4(CI/CD)
 
@@ -204,7 +204,7 @@ platform/orchestrator/
 | `customer_service` | `agents/weather.py` + `agents/ticket.py` + `tools/weather.py` + `tools/ticket.py` | 团队外出天气 + 出差订票 + 工单状态 |
 | `hr_assistant` | `tools/trip.py:477-512` (`query_insurance`) + 新政策 KB | 比对保险方案 + 假期政策 + 缺勤申报 |
 | `devops_copilot` | `tools/trip.py:394-425` + 新 K8s/Jira 适配器 | 工单查询 + On-call + Pod 重启 |
-| `faq_knowledge_base` (RAG) | `tools/trip.py:88-287` + `scripts/init_tour_group_rag.py` | 跨企业文档语义检索 |
+| `faq_knowledge_base` (RAG) | `tools/trip.py:88-287` | 跨企业文档语义检索 |
 
 **每个插件必须声明至少 1 个 RBAC scope** 并演示强制效果(例:`admin` 才能调 `devops_copilot:reboot_pod`)
 

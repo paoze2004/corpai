@@ -152,8 +152,22 @@ intent, planner, react_loop -> tools_gateway  # 唯一共享模块
 3. **依赖注入**:`service.py` 需要 DI 注入 7 个依赖(原 god class 是 self.*)
 
 ### 中性
-1. **chat.py 保留为兼容 alias**:Phase 1 完成后 `from CorpAI.core.chat import ChatService` 仍能 work(转调新模块)
-2. **旧 deprecation 警告**:第 2 个 release 后移除 chat.py
+1. ~~chat.py 保留为兼容 alias~~ → **Phase 1.7 已删除**(见下文"Phase 1.7 收尾")
+2. ~~旧 deprecation 警告~~ → 不再需要
+
+## Phase 1.7 收尾 — 删除 `core/chat.py`
+
+Phase 1 完成的 5 个模块(intent/planner/react_loop/streaming/service)在 Phase 1.6 之后只把 `ChatService.chat` / `chat_stream` 内嵌委托给 `OrchestratorService`,但 `ChatService` 本身仍是 880 行,`api/app.py` 仍 `from CorpAI.core.chat import ChatService`,违反 ADR-004 "OrchestratorService 是唯一 high-level 入口"。
+
+**Phase 1.7 完成**:
+1. 新增 `CorpAI/platform/wiring.py` 作为**组合根**(composition root),把 A2A 网络、ChatOpenAI、ConversationMemory、DB 加载、A2A → LLM summary 闭包全部装配成 `OrchestratorService`
+2. `OrchestratorService` 增加 4 个 sync 门面方法(`get_memory_state` / `clear_memory` / `update_user_profile` / `get_agent_cards`),与原 `ChatService` 对应方法字节级一致;`api/app.py` 6 个端点零改动
+3. `OrchestratorService.__init__` 增加第 7 个可选 DI 参数 `agent_card_provider`(`Callable[[], list[dict]]`);不传时返回空列表(原有 6 参数测试兼容)
+4. `api/app.py`:只动 2 行(import + 构造);6 个方法调用点零改动
+5. **删除 `CorpAI/core/chat.py`(原 1000 行 god class)**
+6. **删除 `tests/chat/`**(已被 `tests/platform/` 全量替代)
+
+平台边界:platform/orchestrator/* 保持纯(不导入 A2A / LangChain / MySQL),所有基础实施接线只在 platform/wiring.py 一处。
 
 ## 权衡
 
@@ -162,20 +176,23 @@ intent, planner, react_loop -> tools_gateway  # 唯一共享模块
 | **微内核架构**(plugin 调度可换) | ❌ 拒绝 — 当前不需要调度策略可插拔,YAGNI |
 | **保留 god class,只拆 streaming** | ❌ 拒绝 — 880 行太大,后续每个改动都痛苦 |
 | **拆分 4 个模块**(更大) | ⚠️ 备选 — 如果 streaming 与 intent 强耦合,可合并为 `flow.py` |
+| **wiring.py 放在 `CorpAI/wiring.py`(包外)** | ❌ 拒绝 — `platform/` 才是写死部分;放包外有"应用 vs 平台"语义混乱风险 |
+| **wiring.py 在 orchestrator 内** | ❌ 拒绝 — orchestrator 模块必须保持纯,组合根是单独的一层 |
 
 ## 验证
 
-- **Phase 1 验收**:`uv run pytest tests/orchestrator/` 全绿
-  - `test_intent.py`:JSON 抽取 + 容错 + stream 模式
-  - `test_planner.py`:skip heuristic + plan generation
-  - `test_react_loop.py`:depends_on 分组 + 并行 + 汇总
-  - `test_streaming.py`:ThinkBlockFilter 状态机 + SSE wire
-  - `test_service.py`:端到端 chat/chat_stream
-- **Phase 1 验收**:`import-linter` 检查通过(无跨模块违规)
-- **手工 e2e**:聊天"北京天气" → 返回与拆分前一致
+- **Phase 1.7 验收**:`pytest tests/platform --tb=short -q` 全绿(70/70)
+- **Phase 1.7 验收**:`from CorpAI.core.chat import ChatService` 报 `ModuleNotFoundError`
+- **Phase 1.7 验收**:`python -c "from CorpAI.api.app import chat_service; print(type(chat_service).__name__)"` 输出 `OrchestratorService`
+- **Phase 1.7 验收**:6 端点方法(`chat` / `chat_stream` / `get_memory_state` / `clear_memory` / `update_user_profile` / `get_agent_cards`)都存在
+- **Phase 1 验收**:原 `tests/orchestrator/` 路径已迁移到 `tests/platform/`(实际目录)
+- **手工 e2e**:聊天"北京天气" → 返回与拆分前一致(ChatService.chat_stream → OrchestratorService.chat_stream)
+- **未做(留待 Phase 4)**:`import-linter` 当前未配置;平台纯度靠代码约束(grep 检查 platform/* 不 import `tools/`/`agents/`)
 
 ## 参考引用
 
-- god class:`CorpAI/core/chat.py:185-1063`
-- 当前依赖图:`CorpAI/core/chat.py:198-248`(`__init__` 注入的所有依赖)
-- 流式参考:`CorpAI/api/app.py:59-101` ThinkBlockFilter
+- `OrchestratorService`:`CorpAI/platform/orchestrator/service.py:42`(原 god class 已删除)
+- 组合根:`CorpAI/platform/wiring.py`
+- 5 模块:`intent.py:31` / `planner.py:34` / `react_loop.py:31` / `streaming.py:20` / `service.py:42`
+- App 兼容门面(7 个 DI 后的 6 端点对应方法):`service.py` 内 `get_memory_state` / `clear_memory` / `update_user_profile` / `get_agent_cards`
+- 流式参考:`CorpAI/platform/orchestrator/streaming.py:20` `ThinkBlockFilter`(状态机字节级保留自 `api/app.py:59-101`)

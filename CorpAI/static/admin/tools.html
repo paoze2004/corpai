@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Tools — CorpAI Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<div class="header">
+    <h1>🛡️ CorpAI Admin</h1>
+    <span class="muted" id="who"></span>
+    <span class="spacer"></span>
+    <button onclick="logout()">退出</button>
+    <a href="/admin/index.html">← 返回</a>
+</div>
+<div class="nav">
+    <a href="/admin/agents.html">Agents</a>
+    <a href="/admin/tools.html" class="active">Tools</a>
+    <a href="/admin/users.html">Users</a>
+    <a href="/admin/logs.html">Logs</a>
+    <a href="/admin/metrics.html">Metrics</a>
+</div>
+
+<div class="container">
+    <h2 style="color:#e94560; margin-bottom:16px;">MCP Tools</h2>
+    <div class="panel" id="content">加载中...</div>
+</div>
+
+<script src="/admin/admin.js"></script>
+<script>
+document.getElementById('who').textContent =
+    (localStorage.getItem('admin_username') || '?') + ' (' + (localStorage.getItem('admin_role') || '?') + ')';
+
+(async () => {
+    try {
+        const data = await apiFetch('/plugins');
+        const tools = (data.data || []).filter(p => p.plugin_type === 'mcp_tool');
+        if (tools.length === 0) {
+            document.getElementById('content').innerHTML =
+                '<p class="muted">无 mcp_tool 类型插件。Phase 5 把 tools/*.py 包成 entry_points 插件。</p>';
+            return;
+        }
+        document.getElementById('content').innerHTML = renderTable(tools, [
+            { key: 'name', title: '名称' },
+            { key: 'version', title: '版本' },
+            { key: 'endpoint', title: 'MCP 端点', render: r => r.endpoint || '—' },
+            { key: 'description', title: '描述' },
+            {
+                key: 'tags', title: '标签',
+                render: r => (r.tags || []).map(t => `<span class="badge">${t}</span>`).join(' ') || '—'
+            },
+        ]);
+    } catch (e) {
+        document.getElementById('content').innerHTML =
+            `<div class="alert alert-error">加载失败: ${e.message}</div>`;
+    }
+})();
+</script>
+</body>
+</html>

@@ -31,7 +31,7 @@ CorpAI 测试包
    python -m pytest tests/ -v
 
 测试前置条件：
-- MySQL 数据库运行中，包含 travel_rag 数据库
+- MySQL 数据库运行中，包含 CorpAI 数据库
 - Milvus 向量数据库运行中（用于旅游团搜索）
 - MCP 服务器运行在 8001/8002/8003 端口
 - A2A 服务器运行在 5005/5006/5007 端口

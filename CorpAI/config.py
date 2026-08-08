@@ -1,65 +1,81 @@
 """
-需求：管理CorpAI项目的配置信息，包括大模型、数据库、日志等配置
-思路步骤：
-1. 定义项目根目录路径
-2. 设置环境变量（生产/测试/开发/预生产）
-3. 创建Config类管理所有配置项
-4. 配置大模型参数（API地址、密钥、模型名称）
-5. 配置数据库参数（主机、用户名、密码、数据库名）
-6. 配置日志文件路径
-7. 配置票务查询接口地址
-8. 配置意图映射字典
-9. 实现根据环境获取不同数据库配置的方法
-"""
+需求：管理CorpAI项目的配置信息,所有配置项 Phase 6 走 os.getenv 读 .env。
 
+思路步骤：
+1. 加载 .env(python-dotenv 自动)
+2. 创建 Config 类,所有字段优先读 env,缺省值兜底(开发/测试便利)
+3. 配置大模型参数(BASE_URL/API_KEY/MODEL)
+4. 配置数据库参数(host/user/password/database,env override)
+5. 配置日志文件路径(从项目根算)
+6. 配置意图映射(保留,Phase 6 不动)
+7. 配置天气/Embedding/Milvus(全部 env override)
+"""
 import os
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
-# 项目根目录：config.py 现在位于 CorpAI/ 包内，需要向上两层才能回到项目根
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# 生产环境
-# env = "prod"
-# 测试环境
-env = "test"
-# 开发环境
-# env = "dev"
-# 预生产环境
-# env = "pre_prod"
+# 项目根目录:config.py 在 CorpAI/ 包内,向上两层回到项目根
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _env(name: str, default: str | None = None) -> str | None:
+    """优先 .env,缺省 None。空字符串视为 None(避免 '' 走流程)。"""
+    val = os.getenv(name)
+    if val is None or val.strip() == "":
+        return default
+    return val
 
-#定义配置文件
+
+def _env_int(name: str, default: int) -> int:
+    val = _env(name)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except ValueError as exc:
+        raise ValueError(f"环境变量 {name}={val!r} 不是合法整数") from exc
+
+
+def _env_float(name: str, default: float) -> float:
+    val = _env(name)
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except ValueError as exc:
+        raise ValueError(f"环境变量 {name}={val!r} 不是合法浮点数") from exc
+
+
 class Config:
+    """Phase 6:全部 hardcoded 改 os.getenv 读 .env(.env.example 已列出所有 env 名)。
 
-    def __init__(self):
-        # 大模型配置（MiniMax - OpenAI 兼容协议）
-        # 默认 base_url = https://api.minimaxi.com/v1（MiniMax 开放平台）
-        self.base_url = os.getenv("BASE_URL") or "https://api.minimaxi.com/v1"
-        self.api_key = os.getenv("API_KEY")
-        # 默认对话模型：MiniMax-Text-01（MiniMax 通用旗舰，可在 .env 覆盖为 abab-6.5s-chat 等）
-        self.model_name = os.getenv("MODEL") or "MiniMax-Text-01"
+    必填项:`API_KEY`、`AUTH_JWT_SECRET`(Phase 3+);其余有合理 dev 缺省。
+    """
 
-        # 数据库配置
-        self.host = 'localhost'
-        # TODO 实际工作中，一般一个业务创建一个账号。不要使用root，风险太大
-        # 当前环境直接用 root:root 跑通（root/123456 不存在，root/root 可用）
-        self.user = 'root'
-        self.password = 'root'
-        self.database = 'travel_rag'
+    def __init__(self) -> None:
+        # ── LLM ──
+        self.base_url = _env("BASE_URL", "https://api.minimaxi.com/v1")
+        self.api_key = _env("API_KEY")  # Phase 6:dev 也必须从 .env 读(无 default)
+        self.model_name = _env("MODEL", "MiniMax-Text-01")
+        self.temperature = _env_float("TEMPERATURE", 0.1)
 
-        # 数据库连接池配置
-        self.pool_name = "corp_ai_pool"  # 连接池名称
-        self.pool_size = 5  # 连接池大小（最大连接数）
+        # ── MySQL ──
+        self.host = _env("MYSQL_HOST", "localhost")
+        self.user = _env("MYSQL_USER", "admin")
+        self.password = _env("MYSQL_PASSWORD", "admin123456")
+        self.database = _env("MYSQL_DATABASE", "CorpAI")
 
-        # 日志配置
-        self.log_file = os.path.join(project_root, 'logs', 'app.log')
+        # 连接池(Phase 6:env override)
+        self.pool_name = _env("MYSQL_POOL_NAME", "corp_ai_pool")
+        self.pool_size = _env_int("MYSQL_POOL_SIZE", 5)
 
-        # # 票务查询的12306接口地址
-        # self.url_123 = ""
+        # ── 日志 ──
+        self.log_file = os.path.join(_project_root, "logs", "app.log")
 
-        # 路由：意图和对应的Agent的对应关系
+        # ── 意图路由(LEGACY:plugin manifest 优先,fallback 走这个;Phase 7 旅行 plugin 已删,
+        #    仅保留作向后兼容 placeholder — 无 plugin 处理时返 "暂不支持")──
         self.intent = {
             "weather": "WeatherQueryAssistant",
             "flight": "TicketAssistant",
@@ -72,83 +88,53 @@ class Config:
             "trip_order": "TripAssistant",
         }
 
-        self.temperature = 0.1
+        # ── 天气数据源(可选 "database" | "api")──
+        self.weather_source = _env("WEATHER_SOURCE", "database")
+        if self.weather_source not in ("database", "api"):
+            raise ValueError(
+                f"WEATHER_SOURCE={self.weather_source!r} 必须是 'database' 或 'api'"
+            )
 
-        # 天气数据源配置
-        # 默认："database"
-        # 可选值："database"（从数据库获取） / "api"（直接从和风API获取）
-        self.weather_source = "database"
-
-        # 和风天气 API 配置
-        self.weather_api_key = os.getenv("WEATHER_API_KEY")
-        self.weather_base_url = os.getenv("WEATHER_BASE_URL")
-        self.weather_api_host = os.getenv("WEATHER_API_HOST")
-        self.weather_timezone = os.getenv("WEATHER_TIMEZONE")
-
-        # 天气监控城市列表（城市名 -> 城市代码）
+        # 和风天气 API
+        self.weather_api_key = _env("WEATHER_API_KEY")
+        self.weather_base_url = _env("WEATHER_BASE_URL")
+        self.weather_api_host = _env("WEATHER_API_HOST")
+        self.weather_timezone = _env("WEATHER_TIMEZONE", "Asia/Shanghai")
         self.weather_city_codes = {
             "北京": "101010100",
-            "成都": "101270101"
+            "成都": "101270101",
         }
+        self.weather_schedule_time = _env("WEATHER_SCHEDULE_TIME", "01:00")
 
-        # 天气定时更新调度时间（北京时间）
-        self.weather_schedule_time = "01:00"
+        # ── Milvus ──
+        self.milvus_host = _env("MILVUS_HOST", "192.168.88.100")
+        self.milvus_port = _env_int("MILVUS_PORT", 19530)
+        self.tour_group_collection = _env("TOUR_GROUP_COLLECTION", "tour_groups")
+        self.faq_collection = _env("FAQ_COLLECTION", "faq_docs")  # Phase 5 faq plugin 加
 
-        # Milvus 向量数据库配置
-        self.milvus_host = "192.168.88.100"
-        self.milvus_port = 19530
-        self.tour_group_collection = "tour_groups"
-
-        # Embedding API 配置（MiniMax 原生协议，独立于 LLM 配置）
-        # MiniMax 的 /v1/embeddings 不是 OpenAI 兼容格式:入参 texts + type,返回 vectors
-        # - type=db  用于入库(旅游团 highlights)
-        # - type=query 用于检索时的用户查询
-        # 缺省时回退到 LLM 的 BASE_URL/API_KEY(单 key 部署便利)
-        self.embedding_base_url = os.getenv("EMBEDDING_BASE_URL") or "https://api.minimax.chat/v1"
-        self.embedding_api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("API_KEY")
-        self.embedding_model_name = os.getenv("EMBEDDING_MODEL") or "embo-01"
+        # ── Embedding(独立于 LLM,Phase 6 env override)──
+        # Phase 6:与 LLM 同源 fallback(单 key 部署便利)
+        self.embedding_base_url = _env("EMBEDDING_BASE_URL") or self.base_url
+        self.embedding_api_key = _env("EMBEDDING_API_KEY") or self.api_key
+        self.embedding_model_name = _env("EMBEDDING_MODEL", "embo-01")
         self.embedding_url = f"{self.embedding_base_url.rstrip('/')}/embeddings"
-        # 入库用 db 提示,查询用 query 提示(影响检索质量)
-        self.embedding_type_insert = os.getenv("EMBEDDING_TYPE_INSERT") or "db"
-        self.embedding_type_query = os.getenv("EMBEDDING_TYPE_QUERY") or "query"
-        self.embedding_dim = 1536
+        self.embedding_type_insert = _env("EMBEDDING_TYPE_INSERT", "db")
+        self.embedding_type_query = _env("EMBEDDING_TYPE_QUERY", "query")
+        self.embedding_dim = _env_int("EMBEDDING_DIM", 1536)
 
-    #
-    # def get_mysql_config(self,env):
-    #     """
-    #     通过不同的环境获取不同的数据库配置
-    #     :return:
-    #     """
-    #     if env == 'prod':
-    #         # 数据库配置 生产
-    #         self.host = 'localhost'
-    #         self.user = 'root'
-    #         self.password = 'root'
-    #         self.database = 'travel_rag'
-    #     elif env == 'dev':
-    #         # 数据库配置 开发
-    #         self.host = 'localhost1'
-    #         self.user = 'root1'
-    #         self.password = 'root1'
-    #         self.database = 'travel_rag'
-    #     elif env == 'test':
-    #         # 数据库配置 测试
-    #         self.host = 'localhost2'
-    #         self.user = 'root2'
-    #         self.password = 'root2'
-    #         self.database = 'travel_rag'
-    #     else:
-    #         # 数据库配置 预生产
-    #         self.host = 'localhost3'
-    #         self.user = 'root3'
-    #         self.password = 'root3'
-    #         self.database = 'travel_rag'
-    #
-    #     return self.host, self.user, self.password, self.database
+        # ── Phase 3+ RBAC ──
+        # AUTH_JWT_SECRET 由 dependencies.get_jwt_secret() 直接读 os.getenv,
+        # 此处不存,保持单一 source-of-truth。
+
+    def __repr__(self) -> str:
+        # 隐藏密码 + api_key,避免 .env 调试时泄露
+        return (
+            f"Config(host={self.host!r}, user={self.user!r}, password={'***' if self.password else None}, "
+            f"database={self.database!r}, base_url={self.base_url!r}, "
+            f"api_key={'***' if self.api_key else None}, model={self.model_name!r})"
+        )
 
 
-if __name__ == '__main__':
-    print(Config().log_file)
-    print(Config().database)
-    # ('localhost', 'root', 'root', 'travel_rag')
-    # ('localhost', 'root2', 'root2', 'travel_rag')
+if __name__ == "__main__":
+    c = Config()
+    print(repr(c))
