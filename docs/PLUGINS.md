@@ -65,7 +65,7 @@ uv pip install -e plugins/my_plugin
 from CorpAI.platform.plugin_manager import discover_all
 r = discover_all()
 print([m.name for m in r.list_all()])
-# 期望:['customer_service', 'devops_copilot', 'faq', 'hr_assistant', 'my_plugin']
+# 期望:['hr_assistant', 'devops_copilot', 'faq', 'my_plugin']
 "
 ```
 
@@ -113,7 +113,7 @@ def register(registry: PluginRegistry) -> None:
 | 角色 | 期望 scope | 用例 |
 |------|------------|------|
 | super_admin | `["*"]` | 可调所有 plugin |
-| admin | `["customer_service:read", "devops:read", ...]` | 跨 plugin 读 |
+| admin | `["hr:read", "devops:read", "faq:read"]` | 跨 plugin 读 |
 | employee | `["chat:write"]` | 普通聊天(无 plugin 直接权限) |
 | agent_author | `["chat:write", "plugin:write"]` | 注册/管理 plugin |
 
@@ -123,20 +123,20 @@ def register(registry: PluginRegistry) -> None:
 
 `manifest.summary_prompt = "summarize_x"` 时,wiring 通过反射从 `plugin.prompts` 模块查同名函数并调,得到 `ChatPromptTemplate`。
 
-### 范例:`customer_service` plugin
+### 范例:`hr_assistant` plugin
 ```python
-# plugins/customer_service/src/customer_service/prompts.py
+# plugins/hr_assistant/src/hr_assistant/prompts.py
 from langchain_core.prompts import ChatPromptTemplate
 
-def summarize_weather_or_ticket() -> ChatPromptTemplate:
+def summarize_benefits() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_template("...")
 ```
 
-`AGENT_MANIFEST.summary_prompt = "summarize_weather_or_ticket"` 即可。`wiring._resolve_summary_prompt`:
+`AGENT_MANIFEST.summary_prompt = "summarize_benefits"` 即可。`wiring._resolve_summary_prompt`:
 ```python
-mod = plugin_manager._plugin_modules[manifest.name]  # "customer_service"
+mod = plugin_manager._plugin_modules[manifest.name]  # "hr_assistant"
 prompts_pkg = getattr(mod, "prompts", None)
-fn = getattr(prompts_pkg, "summarize_weather_or_ticket", None)
+fn = getattr(prompts_pkg, "summarize_benefits", None)
 return fn() if fn else None
 ```
 
@@ -194,7 +194,7 @@ Pydantic v2 `model_config = ConfigDict(extra="forbid")` — 任何拼错的字�
 - 不允许修改平台代码来适配 plugin;反过来平台升级也不能改 plugin。
 
 ### 9.4 与 plugins/customer_service_demo 的关系?
-`customer_service_demo` 是 Phase 3 占位脚手架 — Phase 6 移到 `tests/_fixtures/customer_service_scaffold/` 仅作 CI 验证 entry_points 发现。
+`customer_service_demo` 是 Phase 3 占位脚手架 — Phase 7 已删,改为 `tests/_fixtures/customer_service_scaffold/` 仅作 CI 验证 entry_points 发现。
 
 ### 9.5 性能 / trace / 监控?
 - `manifest.name` 落到 `corpai_app_info` 的 `version=phase4` 元数据(Phase 4)
@@ -202,14 +202,13 @@ Pydantic v2 `model_config = ConfigDict(extra="forbid")` — 任何拼错的字�
 - `_call_a2a_and_summarize` 自动 inc `A2A_CALL_TOTAL` Counter
 - summary LLM 自动 inc `LLM_CALL_TOTAL` + 计时
 
-## 10. 已交付的 4 个示范 plugin
+## 10. 已交付的 3 个真 plugin
 
 | Plugin | A2A 端口 | MCP 端口 | 业务 | RBAC scopes |
 |--------|----------|----------|------|------------|
-| `customer_service` | 5005 | 8002, 8001 | 天气 + 票务(火车/机票/演唱会) | `customer_service:read, customer_service:write` |
-| `hr_assistant` | 5010 | 8010, 8011 | 保险 + HR 政策 KB | `hr:read, hr:write` |
-| `devops_copilot` | 5020 | 8020, 8021 | 工单 + On-call + Pod 重启(RBAC showcase) | `devops:read, devops:write` |
-| `faq` | 5030 | 8030 | RAG over Milvus(Phase 5 简化版降级内存) | `faq:read` |
+| `hr_assistant` | 5010 | 8010, 8011 | 员工福利(B001-B008) + HR 政策 KB(P001-P010) | `hr:read, hr:write` |
+| `devops_copilot` | 5020 | 8020, 8021 | 工单(INC-001~008) + On-call(4 团队) + Pod 重启(RBAC showcase) | `devops:read, devops:write` |
+| `faq` | 5030 | 8030 | 企业 KB RAG(FAQ001~012,VPN/远程办公/差旅等) | `faq:read` |
 
 ## 11. 引用
 

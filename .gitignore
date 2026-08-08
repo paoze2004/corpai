@@ -11,3 +11,4 @@ wheels/
 
 # Local environment variables (contains secrets, do NOT commit)
 .env
+logs/

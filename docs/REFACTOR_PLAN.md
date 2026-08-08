@@ -59,7 +59,7 @@ Orchestrator (唯一写死的核心,意图识别 + 任务规划 + 协同)
 | **2** | 第 5 周 | DB 集中化 + 记忆 per-user 化 | `platform/db.py:DatabasePool` + ALTER TABLE 加 user_id/session_id(默认 'legacy' 兼容) |
 | **3** | 第 6-8 周 | Plugin Manager + RBAC + 管理后台 MVP | `platform/plugin_manager.py`(entry_points 发现)+ `platform/auth/` + `/admin/*` 5 个页面 |
 | **4** | 第 9 周 | Observability + CI/CD | 结构化日志 + trace_id + `/metrics` + GitHub Actions + Dockerfile |
-| **5** | 第 10-11 周 | 4 个示范插件 + 文档 | customer_service / hr_assistant / devops_copilot / faq_knowledge_base |
+| **5** | 第 10-11 周 | 3 个真插件 + 文档(Phase 7 起 customer_service 已删) | hr_assistant / devops_copilot / faq |
 | **6** | 第 12 周 | 硬化(剩余硬编码 → env + Pydantic at MCP 边界 + async 清理) | 全面 .env 化、输入验证、asyncio.run 反模式修复 |
 
 **总计:12 周(1 个经验开发者,~525 LOC/周)**,约 6300 LOC 新增/重写
@@ -184,10 +184,10 @@ platform/orchestrator/
 ### Phase 3-5(新增管理后台 + 示范插件)
 
 - **新增** `static/admin/{index,agents,tools,users,logs,metrics}.html`(vanilla JS,5 页)
-- **新增** `plugins/customer_service/{plugin.py,mcp_server.py,prompts.py}`(从 `agents/weather.py` + `agents/ticket.py` + `tools/weather.py` + `tools/ticket.py` 改造)
-- **新增** `plugins/hr_assistant/{plugin.py,faq_loader.py}`(从 `tools/trip.py:477-512` `query_insurance` 改造)
-- **新增** `plugins/devops_copilot/{plugin.py,k8s_adapter.py,jira_adapter.py}`(从 `tools/trip.py:394-425` 改造)
-- **新增** `plugins/faq/{plugin.py,ingest.py,retriever.py}`(从 `tools/trip.py:88-287` 改造 RAG,Phase 7 已删旅游脚本)
+- **Phase 5 计划**:`plugins/customer_service/{plugin.py,mcp_server.py,prompts.py}`(从 `agents/weather.py` + `agents/ticket.py` + `tools/weather.py` + `tools/ticket.py` 改造)— **Phase 7 已整体删除,未交付**
+- **新增** `plugins/hr_assistant/{plugin.py,prompts.py,server.py,tools.py}`(从 `tools/trip.py:477-512` `query_insurance` 改造 + 新政策 KB)
+- **新增** `plugins/devops_copilot/{plugin.py,prompts.py,server.py,tools.py}`(从 `tools/trip.py:394-425` 改造 + 新 K8s/Jira 适配器)
+- **新增** `plugins/faq/{plugin.py,prompts.py,server.py,retriever.py,seed.py}`(从 `tools/trip.py:88-287` 改造 RAG,Phase 7 已删旅游脚本)
 
 ### Phase 4(CI/CD)
 
@@ -197,14 +197,13 @@ platform/orchestrator/
 
 ---
 
-## 4 个示范插件映射表
+## 3 个真插件映射表(Phase 7:customer_service 已删)
 
 | 新插件 | 复用现有代码 | 企业场景 |
 |--------|------------|---------|
-| `customer_service` | `agents/weather.py` + `agents/ticket.py` + `tools/weather.py` + `tools/ticket.py` | 团队外出天气 + 出差订票 + 工单状态 |
-| `hr_assistant` | `tools/trip.py:477-512` (`query_insurance`) + 新政策 KB | 比对保险方案 + 假期政策 + 缺勤申报 |
-| `devops_copilot` | `tools/trip.py:394-425` + 新 K8s/Jira 适配器 | 工单查询 + On-call + Pod 重启 |
-| `faq_knowledge_base` (RAG) | `tools/trip.py:88-287` | 跨企业文档语义检索 |
+| `hr_assistant` | `tools/trip.py:477-512` (`query_insurance`) + 新政策 KB | 员工福利(B001-B008) + 人事政策(P001-P010) |
+| `devops_copilot` | `tools/trip.py:394-425` + 新 K8s/Jira 适配器 | 工单查询(INC-001~008) + On-call + Pod 重启 |
+| `faq` (RAG) | `tools/trip.py:88-287` | 企业 KB 语义检索(FAQ001~012) |
 
 **每个插件必须声明至少 1 个 RBAC scope** 并演示强制效果(例:`admin` 才能调 `devops_copilot:reboot_pod`)
 

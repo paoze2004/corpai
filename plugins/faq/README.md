@@ -1,6 +1,6 @@
 # corpai-plugin-faq
 
-Phase 5:FAQ RAG — 跨企业文档语义检索。
+企业 FAQ 助手 — 跨企业 KB 文档语义检索(VPN / 远程办公 / 差旅 / 工位 / WiFi / 培训等)。
 
 ## 安装 + 启动
 
@@ -10,16 +10,30 @@ uv pip install -e plugins/faq
 .venv\Scripts\python.exe -m faq.entry  # 启 A2A server :5030
 ```
 
-## Phase 5 vs Phase 6
+## Manifest
 
-- **Phase 5(当前)**: 内存 doc store + keyword overlap scoring。测试用。
-- **Phase 6(未来)**: 集成 pymilvus + 真实 Embedding API + 语义检索。
+- `faq`(llm_agent, :5030) — 处理 intent `faq`
+- `faq_query_mcp`(mcp_tool, :8030) — `query_faq`
 
-## 使用示例
+## 内置 KB(12 条)
 
-```python
-from faq.server import add_doc_for_testing
-add_doc_for_testing("员工每年 10 天年假,工作满 5 年增至 15 天。")
-add_doc_for_testing("缺勤须提前 1 天在 OA 提交申请。")
-# 然后通过 A2A server 查
-```
+启动时由 `seed.py` 自动注入(`FAQ001 ~ FAQ012`):
+
+| ID | 主题 |
+|----|------|
+| FAQ001 | VPN 申请流程 |
+| FAQ002 | 远程办公设备申请 |
+| FAQ003 | 安全事件上报 |
+| FAQ004 | 差旅预订流程 |
+| FAQ005 | 加班调休规则 |
+| FAQ006 | 员工证办理 |
+| FAQ007 | 工位调整 |
+| FAQ008 | 公司 WiFi 接入 |
+| FAQ009 | 团队建设申请 |
+| FAQ010 | 代码保密规范 |
+| FAQ011 | IT 采购流程 |
+| FAQ012 | 培训申请 |
+
+## 检索方式
+
+当前 Phase:关键字 + token overlap 评分。后续接 Milvus 做语义检索。

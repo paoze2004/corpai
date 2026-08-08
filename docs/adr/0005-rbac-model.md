@@ -47,7 +47,7 @@ employee        ── 只能聊天,Agent 可见性按租户 + role 过滤
 
 ### 数据模型
 
-新增 4 张表到现有 MySQL(`config.py:50` 数据库 `travel_rag`,Phase 2 重命名为 `copilot_core`):
+新增 4 张表到现有 MySQL(`config.py` 数据库 `CorpAI`):
 
 ```sql
 CREATE TABLE auth_tenants (
