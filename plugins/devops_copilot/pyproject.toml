@@ -1,7 +1,7 @@
 [project]
 name = "corpai-plugin-devops-copilot"
 version = "1.0.0"
-description = "Phase 5:DevOps 副驾 — 工单查询 + On-call 联系 + Pod 重启(dry_run)"
+description = "CorpAI DevOps 副驾 plugin — 工单(INC-001~008) + On-call(4 团队) + Pod 重启"
 requires-python = ">=3.11"
 dependencies = []
 
