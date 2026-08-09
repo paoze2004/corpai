@@ -1,11 +1,14 @@
-"""hr_assistant plugin A2A Server — v2.1 路由 7 类 KB + 9 操作类 + 3 bridge。"""
+"""hr_assistant plugin A2A Server — v3.0 生产化精简:9 操作类 + 3 bridge。
+
+删掉 7 类 KB 路由(原 `query_*` 字典玩具已弃用)。
+保留所有写 MySQL 真业务的 action + 跨插件 bridge。
+"""
 from __future__ import annotations
 
 import json
 import logging
 from typing import Any
 
-from hr_assistant import tools as t
 from hr_assistant import actions as a
 from hr_assistant.prompts import HR_ASSISTANT_LLM_PROMPT
 from langchain_openai import ChatOpenAI
@@ -44,7 +47,7 @@ def _extract_text(task: Task) -> str:
     return ""
 
 
-# 动作路由(优先级最高 — 任何"提交/申请/撤销/审批/我的"动词先匹配,防误中 KB)
+# 动作路由(优先级最高)
 # 每个 action 用一个轻量 disambiguator + 必填 slot 检查,缺 slot 直接返 JSON envelope 提示用户
 _ACTION_HINTS = {
     "submit_leave": (
@@ -142,104 +145,27 @@ def _dispatch_action(action: str, text: str) -> str:
     return json.dumps({"status": "unknown_action", "action": action}, ensure_ascii=False)
 
 
-# 路由关键词(按"KB 类别"分组;每个类别优先匹配,顺序敏感)
-_ROUTES = [
-    ("process", ["流程", "怎么申请", "如何", "步骤", "走什么", "process", "入职流程",
-                 "离职流程", "转正", "请假流程", "报销流程", "加班申请", "面试流程",
-                 "学历提升", "在职证明", "调岗", "外籍签证", "绩效考核"]),
-    ("onboarding", ["面试", "入职", "新员工", "招聘", "导师", "实习", "转正答辩", "onboarding",
-                    "recruitment"]),
-    ("compensation", ["工资", "薪水", "年终奖", "薪资", "调薪", "股票", "期权", "vesting",
-                      "行权", "个税", "compensation", "salary", "payroll"]),
-    ("development", ["培训", "课程", "认证", "书籍", "深造", "学历", "CPA", "PMP",
-                     "AWS", "development", "training"]),
-    ("welfare", ["工会", "心理咨询", "EAP", "节日", "员工活动", "兴趣小组", "welfare",
-                 "福利活动"]),
-    ("benefit", ["福利", "社保", "公积金", "体检", "团建", "设备", "餐补", "通讯",
-                 "benefit", "五险", "六险", "保险方案", "商业医疗", "年假福利",
-                 "弹性工作", "远程办公"]),
-    ("policy", ["政策", "假期", "年假", "病假", "缺勤", "policy", "婚假", "产假",
-                "丧假", "调休", "离职", "考勤", "报销", "陪产", "加班", "出差",
-                "保密", "利益冲突", "反骚扰", "晋升", "PIP", "申诉"]),
-]
-
-
 def _route(text: str) -> str:
-    """先 match 动作(高优先级);未命中再走 7 类 KB。"""
-    # 动作路由 — 顺序敏感(我的申请 应在 query_my_requests 之前先于 "申请" 字)
+    """v3.0:仅动作路由(9 类) + bridge。无 KB 字典玩具。"""
     for action, (kws, _hint) in _ACTION_HINTS.items():
         if any(k in text for k in kws):
             return _dispatch_action(action, text)
-    for category, keywords in _ROUTES:
-        if any(k in text for k in keywords):
-            return _dispatch(category, text)
     return json.dumps({
         "status": "no_match",
-        "message": "暂不支持该查询。hr_assistant 处理:福利/政策/流程/招聘/薪酬/培训/关怀 7 大类 HR 业务。",
+        "message": "暂不支持该查询。hr_assistant 处理:请假/报销/证明/资产/培训/转正/审批/查询 8 大类 HR 操作 + 跨插件 bridge。",
     }, ensure_ascii=False)
 
 
-def _dispatch(category: str, text: str) -> str:
-    """单类别路由后提取参数调用对应工具。"""
-    if category == "process":
-        # 提取关键词
-        topic = next((kw for kw in ["离职", "入职", "转正", "考勤异常", "费用报销",
-                                   "资产申请", "加班", "请假", "学历提升", "在职证明",
-                                   "调岗", "外籍签证"]
-                      if kw in text), "")
-        return t.query_process(topic=topic)
-    if category == "onboarding":
-        topic = next((kw for kw in ["面试", "入职材料", "新员工培训", "导师", "实习转正",
-                                   "试用期"]
-                      if kw in text), "")
-        return t.query_onboarding(topic=topic)
-    if category == "compensation":
-        topic = next((kw for kw in ["工资结构", "年终奖", "调薪", "vesting", "行权",
-                                   "个税"]
-                      if kw in text), "")
-        return t.query_compensation(topic=topic)
-    if category == "development":
-        topic = next((kw for kw in ["外部培训", "内部培训", "书籍", "导师", "认证",
-                                   "学历"]
-                      if kw in text), "")
-        return t.query_development(topic=topic)
-    if category == "welfare":
-        topic = next((kw for kw in ["工会", "心理咨询", "节日", "员工活动"]
-                      if kw in text), "")
-        return t.query_welfare(topic=topic)
-    if category == "benefit":
-        cat = next((kw for kw in ["社保", "补充医疗", "体检", "团建", "设备",
-                                  "培训", "餐饮", "通讯", "休假", "股票",
-                                  "期权", "关怀", "弹性"]
-                    if kw in text), None)
-        return t.query_benefits(category=cat)
-    # policy
-    topic = next((kw for kw in ["年假", "病假", "缺勤", "报销", "调休", "婚假", "产假",
-                               "丧假", "离职", "考勤", "加班", "出差", "保密",
-                               "利益冲突", "反骚扰", "晋升", "PIP", "申诉",
-                               "调岗", "外籍", "工时", "员工关系"]
-                  if kw in text), "")
-    return t.query_policy(topic=topic)
-
-
 class HrAssistantServer(A2AServer):
-    """v2.1 A2A:7 类 KB + 9 操作类 + 3 bridge,优先级 动作 > KB。"""
+    """v3.0 A2A:9 操作类 + 3 bridge,仅写 MySQL 真业务。"""
 
     def __init__(self, llm: ChatOpenAI | None = None):
         card = AgentCard(
             name="hr_assistant",
-            description="HR 助手 v2.1 — 7 类 KB + 9 操作类 + 3 跨插件 bridge",
+            description="HR 助手 v3.0 — 9 操作类 + 3 跨插件 bridge,无 KB 字典",
             url="http://localhost:5010",
-            version="2.1.0",
+            version="3.0.0",
             skills=[
-                # KB 7 类
-                AgentSkill(id="insurance", name="福利查询", description="查员工福利项目(B001-B018)"),
-                AgentSkill(id="policy", name="政策查询", description="查 HR 政策 KB(P001-P030)"),
-                AgentSkill(id="process", name="流程查询", description="查 HR 流程(PR001-PR012)"),
-                AgentSkill(id="onboarding", name="入职", description="查招聘/入职/转正(ON001-ON006)"),
-                AgentSkill(id="compensation", name="薪酬", description="查工资/年终/股票(C001-C006)"),
-                AgentSkill(id="development", name="培训", description="查培训/认证(D001-D006)"),
-                AgentSkill(id="welfare", name="关怀", description="查工会/节日/活动(W001-W004)"),
                 # 操作 9 类
                 AgentSkill(id="submit_leave", name="提交请假", description="提交年假/病假/事假申请"),
                 AgentSkill(id="submit_reimbursement", name="提交报销", description="提交费用报销"),
@@ -269,7 +195,7 @@ class HrAssistantServer(A2AServer):
             text = _extract_text(task)
             if not text.strip():
                 return Task(id=task.id, status=TaskStatus(state=TaskState.FAILED, message=task.message))
-            response = self._route(text)
+            response = _route(text)
             return Task(
                 id=task.id,
                 status=TaskStatus(state=TaskState.COMPLETED, message=task.message),
@@ -278,6 +204,3 @@ class HrAssistantServer(A2AServer):
         except Exception:
             logger.exception("hr_assistant handle_task failed")
             return Task(id=task.id, status=TaskStatus(state=TaskState.FAILED, message=task.message))
-
-    def _route(self, text: str) -> str:
-        return _route(text)

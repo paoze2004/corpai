@@ -531,45 +531,82 @@ _DEVOPS_K8S_URL = os.getenv("DEVOPS_K8S_URL", "http://localhost:8021")
 _BRIDGE_TIMEOUT = 2.0  # 秒,跨插件 bridge 严格控时
 
 
-def _bridge_call(target: str, url: str, tool_name: str, **kwargs) -> Optional[dict]:
-    """跨插件 HTTP 调用。失败时 Counter 增 + 返 None(桥接断,不阻塞主结果)。"""
+def _bridge_call(target: str, url: str, tool_name: str, **kwargs) -> dict:
+    """跨插件 HTTP 调用。v3.0:失败时显式返 `bridge_unavailable` 状态(绝不 silent)。
+
+    返回:
+      - 成功:{...} 原始 dict
+      - 失败:{"status": "bridge_unavailable", "kind": "timeout|unreachable|..."}
+    """
     try:
         resp = requests.post(
             f"{url}/mcp/tools/{tool_name}",
             json=kwargs,
             timeout=_BRIDGE_TIMEOUT,
         )
-        if resp.status_code != 200:
-            HR_BRIDGE_ERRORS_TOTAL.labels(target=target, kind=f"http{resp.status_code}").inc()
-            logger.warning(f"bridge {target} {tool_name} HTTP {resp.status_code}")
-            return None
-        return resp.json()
     except requests.Timeout:
         HR_BRIDGE_ERRORS_TOTAL.labels(target=target, kind="timeout").inc()
-        logger.warning(f"bridge {target} {tool_name} timeout")
-        return None
-    except requests.ConnectionError:
+        return {
+            "status": "bridge_unavailable",
+            "kind": "timeout",
+            "message": f"bridge {target} {tool_name} 超时({_BRIDGE_TIMEOUT}s)",
+        }
+    except requests.ConnectionError as exc:
         HR_BRIDGE_ERRORS_TOTAL.labels(target=target, kind="unreachable").inc()
-        logger.warning(f"bridge {target} {tool_name} unreachable")
-        return None
+        return {
+            "status": "bridge_unavailable",
+            "kind": "unreachable",
+            "message": f"bridge {target} 不可达 ({url});{exc.__class__.__name__}",
+        }
     except Exception as e:
         HR_BRIDGE_ERRORS_TOTAL.labels(target=target, kind="error").inc()
         logger.warning(f"bridge {target} {tool_name} {e}")
-        return None
+        return {
+            "status": "bridge_unavailable",
+            "kind": "error",
+            "message": f"bridge {target} 异常:{e}",
+        }
+
+    if resp.status_code != 200:
+        kind = f"http{resp.status_code}"
+        HR_BRIDGE_ERRORS_TOTAL.labels(target=target, kind=kind).inc()
+        return {
+            "status": "bridge_unavailable",
+            "kind": kind,
+            "message": f"bridge {target} HTTP {resp.status_code};{resp.text[:200]}",
+        }
+
+    try:
+        return resp.json()
+    except Exception as exc:
+        HR_BRIDGE_ERRORS_TOTAL.labels(target=target, kind="json_decode").inc()
+        return {
+            "status": "bridge_unavailable",
+            "kind": "json_decode",
+            "message": f"bridge {target} 返非 JSON:{exc}",
+        }
 
 
 def cross_query_faq(authorization: str, query: str, top_k: int = 2) -> str:
     """跨插件:调 faq mcp 拿语义检索结果(兜底补全)。
 
     适用:hr KB 不覆盖时,自动用 faq 共同回答。
-    失败:静默降级 + counter,不影响主流程。
+    失败:v3.0 显式返 bridge_unavailable(不再 silent-fail)。
     """
     action = "cross_query_faq"
     try:
         _current_user(authorization)  # 校验起码 chat:write
         result = _bridge_call("faq", _FAQ_URL, "query_faq",
                               query_text=query, limit=top_k)
-        if not result or result.get("status") == "no_data":
+        if result.get("status") == "bridge_unavailable":
+            # v3.0:不再 silent,显式告诉用户 bridge 失败 + kind
+            return _ok(action, {
+                "hits": [],
+                "bridge_status": "bridge_unavailable",
+                "kind": result.get("kind"),
+                "message": result.get("message"),
+            }, "faq 兜底 bridge 失败,仅本插件结果")
+        if result.get("status") == "no_data":
             return _ok(action, {"hits": [], "hint": "faq 兜底未命中"},
                        "faq 兜底未命中,仅本插件结果")
         hits = result.get("data", [])
@@ -586,19 +623,22 @@ def cross_check_devops(authorization: str, asset_type: str, reason: str) -> str:
     """跨插件:请求资产前,先查 devops 工单看是否已有相关请求(去重)。
 
     适用:request_asset 提交前,避免重复申请。
-    失败:静默降级,继续 process request_asset。
+    v3.0:失败显式告诉用户 bridge 状态(不再 silent)。
     """
     action = "cross_check_devops"
     try:
         _current_user(authorization)
-        # 简化:用 reason 关键词搜 devops incident
         result = _bridge_call("devops", _DEVOPS_INCIDENT_URL, "query_incident",
                               limit=5)
-        if not result:
-            return _ok(action, {"duplicate": False, "hint": "devops 不可达,跳过去重"},
-                       "devops 不可达,未检查重复")
+        if result.get("status") == "bridge_unavailable":
+            # v3.0:告诉用户 bridge 失败,让用户决定是否继续
+            return _ok(action, {
+                "duplicate": False,
+                "bridge_status": "bridge_unavailable",
+                "kind": result.get("kind"),
+                "message": result.get("message"),
+            }, "devops bridge 失败,未做去重检查(继续 process request_asset 由用户决定)")
         items = result.get("data", [])
-        # 简化匹配:reason 包含任意 incident.title 关键词
         for it in items:
             title = it.get("title", "")
             if it.get("status") in ("open", "in_progress") and any(
@@ -626,8 +666,9 @@ def cross_notify_devops(authorization: str, request_id: str, target_type: str) -
         claims = _check_scope(authorization, "hr:write")
         result = _bridge_call("devops", _DEVOPS_K8S_URL, "query_oncall",
                               team="platform")
-        if not result:
-            return _err(action, "error", "devops 不可达,无法获取 oncall 联系方式")
+        if result.get("status") == "bridge_unavailable":
+            return _err(action, "bridge_unavailable",
+                       f"devops 不可达:{result.get('message')}")
         return _ok(action, {
             "request_id": request_id,
             "target_type": target_type,

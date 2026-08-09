@@ -1,4 +1,20 @@
-"""devops_copilot plugin v3.0 — 35+ manifest + register。"""
+"""devops_copilot plugin v3.0 — 生产化精简到 4 个真工具 + 2 bridge。
+
+删掉:
+- incident_create(6 个 create/assign/resolve/escalate 等写操作玩具)
+- pipeline(4 个查询玩具)
+- log(4 个查询玩具)
+
+保留 4 个真工具(都接真 SDK,Phase 1 接入):
+- query_incident → Jira
+- query_oncall   → PagerDuty
+- query_alert    → Prometheus Alertmanager
+- get_pod_logs   → kubernetes-python
+
++ 2 个跨插件 bridge(显式失败):
+- cross_check_hr
+- cross_query_faq
+"""
 from CorpAI.platform.plugin_manager import PluginManifest, PluginRegistry
 
 from devops_copilot.prompts import DEVOPS_LLM_PROMPT
@@ -6,21 +22,21 @@ from devops_copilot.prompts import DEVOPS_LLM_PROMPT
 AGENT_MANIFEST = PluginManifest(
     name="devops_copilot",
     version="3.0.0",
-    description="DevOps 副驾 v3.0:incident(10)+ oncall(8)+ k8s(5)+ monitoring(6)+ cicd(4)+ logs(4)+ bridge(2),共 39 工具。",
+    description="DevOps 副驾 v3.0(生产化):4 个真工具(query_incident/query_oncall/query_alert/get_pod_logs)+ 2 跨插件 bridge。无 in-memory 玩具。",
     plugin_type="llm_agent",
     endpoint="http://localhost:5020",
     llm_prompt=DEVOPS_LLM_PROMPT,
     summary_prompt="summarize_incident",
-    required_intents=["devops", "incident", "oncall", "pod_restart", "alert", "pipeline", "logs"],
+    required_intents=["devops", "incident", "oncall", "alert", "pod"],
     permissions=["devops:read", "devops:write"],
-    tags=["devops", "k8s", "incident", "oncall", "alert", "cicd", "logs"],
+    tags=["devops", "incident", "oncall", "alert", "k8s"],
 )
 
-# ─── Incident(10 个)— :8020 ───
+# ─── Incident(1)— :8020 ───
 INCIDENT_TOOL = PluginManifest(
     name="devops_copilot_incident_mcp",
     version="3.0.0",
-    description="工单查询/操作:query_incident / list_recent / list_open_p0 / get_stats / search / get_workload。",
+    description="工单查询:query_incident(Jira REST API)。Phase 1 接入。",
     plugin_type="mcp_tool",
     endpoint="http://localhost:8020",
     mcp_tool_name="query_incident",
@@ -28,46 +44,23 @@ INCIDENT_TOOL = PluginManifest(
     tags=["incident", "jira", "mcp"],
 )
 
-INCIDENT_CREATE_TOOL = PluginManifest(
-    name="devops_copilot_incident_create_mcp",
-    version="3.0.0",
-    description="创建工单:create_incident / assign / resolve / escalate。需 devops:write。",
-    plugin_type="mcp_tool",
-    endpoint="http://localhost:8025",
-    mcp_tool_name="create_incident",
-    permissions=["devops:write"],
-    tags=["incident", "action", "mcp"],
-)
-
-# ─── Oncall(8 个)— :8020 ───
+# ─── Oncall(1)— :8020 ───
 ONCALL_TOOL = PluginManifest(
     name="devops_copilot_oncall_mcp",
     version="3.0.0",
-    description="On-call 联系:query / list_teams / get_primary / rotate / list_all / find_by_name / get_schedule / page。",
+    description="On-call 联系:query_oncall(PagerDuty API)。Phase 1 接入。",
     plugin_type="mcp_tool",
-    endpoint="http://localhost:8026",
+    endpoint="http://localhost:8020",
     mcp_tool_name="query_oncall",
     permissions=["devops:read"],
-    tags=["oncall", "rotation", "mcp"],
+    tags=["oncall", "pagerduty", "mcp"],
 )
 
-# ─── K8s(5 个)— :8021 ───
-K8S_TOOL = PluginManifest(
-    name="devops_copilot_k8s_mcp",
-    version="3.0.0",
-    description="K8s 操作(dry_run 默认):restart_pod / rollback_deployment / scale_deployment / get_pod_logs / cordon_node。",
-    plugin_type="mcp_tool",
-    endpoint="http://localhost:8021",
-    mcp_tool_name="restart_pod",
-    permissions=["devops:write"],
-    tags=["k8s", "pod", "write", "mcp"],
-)
-
-# ─── 监控告警(6 个)— :8022 ───
+# ─── Alert(1)— :8022 ───
 ALERT_TOOL = PluginManifest(
     name="devops_copilot_alert_mcp",
     version="3.0.0",
-    description="监控告警:query / list_firing / list_critical / get_service_health / silence / get_stats。",
+    description="监控告警:query_alert(Prometheus Alertmanager)。Phase 1 接入。",
     plugin_type="mcp_tool",
     endpoint="http://localhost:8022",
     mcp_tool_name="query_alert",
@@ -75,35 +68,23 @@ ALERT_TOOL = PluginManifest(
     tags=["alert", "prometheus", "mcp"],
 )
 
-# ─── CI/CD(4 个)— :8023 ───
-PIPELINE_TOOL = PluginManifest(
-    name="devops_copilot_pipeline_mcp",
+# ─── K8s(1)— :8021, get_pod_logs 是 devops:read ───
+K8S_TOOL = PluginManifest(
+    name="devops_copilot_k8s_mcp",
     version="3.0.0",
-    description="CI/CD 流水线:query_pipeline / list_failed / trigger / get_stats。",
+    description="K8s: get_pod_logs(kubernetes-python)。DRY_RUN 默认。需 devops:read。",
     plugin_type="mcp_tool",
-    endpoint="http://localhost:8023",
-    mcp_tool_name="query_pipeline",
+    endpoint="http://localhost:8021",
+    mcp_tool_name="get_pod_logs",
     permissions=["devops:read"],
-    tags=["cicd", "pipeline", "mcp"],
+    tags=["k8s", "pod", "logs", "mcp"],
 )
 
-# ─── 日志(4 个)— :8024 ───
-LOG_TOOL = PluginManifest(
-    name="devops_copilot_log_mcp",
-    version="3.0.0",
-    description="日志源:query_log_source / list_log_sources / search_logs / get_retention_policy。",
-    plugin_type="mcp_tool",
-    endpoint="http://localhost:8024",
-    mcp_tool_name="query_log_source",
-    permissions=["devops:read"],
-    tags=["logs", "elasticsearch", "mcp"],
-)
-
-# ─── Bridge(2 个)— :8027 ───
+# ─── Bridge(2)— :8027-8028 ───
 BRIDGE_HR_TOOL = PluginManifest(
     name="devops_copilot_bridge_hr_mcp",
     version="3.0.0",
-    description="DevOps → HR:cross_check_hr(请假触发 oncall 备份检查)。失败静默降级。需 devops:read。",
+    description="DevOps → HR:cross_check_hr(请假触发 oncall 备份检查)。失败显式告知 + Counter。",
     plugin_type="mcp_tool",
     endpoint="http://localhost:8027",
     mcp_tool_name="cross_check_hr",
@@ -114,7 +95,7 @@ BRIDGE_HR_TOOL = PluginManifest(
 BRIDGE_FAQ_TOOL = PluginManifest(
     name="devops_copilot_bridge_faq_mcp",
     version="3.0.0",
-    description="DevOps → FAQ 兜底:cross_query_faq(SOP 兜底补全)。失败静默降级。需 devops:read。",
+    description="DevOps → FAQ 兜底:cross_query_faq(SOP 兜底)。失败显式告知 + Counter。",
     plugin_type="mcp_tool",
     endpoint="http://localhost:8028",
     mcp_tool_name="cross_query_faq",
@@ -124,13 +105,10 @@ BRIDGE_FAQ_TOOL = PluginManifest(
 
 
 def register(registry: PluginRegistry) -> None:
+    """v3.0:7 manifest = 1 agent + 4 真工具 + 2 bridge。"""
     for m in (
         AGENT_MANIFEST,
-        # Incident / Oncall
-        INCIDENT_TOOL, INCIDENT_CREATE_TOOL, ONCALL_TOOL,
-        # K8s / 监控 / CI/CD / 日志
-        K8S_TOOL, ALERT_TOOL, PIPELINE_TOOL, LOG_TOOL,
-        # Bridge
+        INCIDENT_TOOL, ONCALL_TOOL, ALERT_TOOL, K8S_TOOL,
         BRIDGE_HR_TOOL, BRIDGE_FAQ_TOOL,
     ):
         registry.register(m)

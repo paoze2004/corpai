@@ -1,126 +1,77 @@
-"""hr_assistant plugin 单元测试 — v2.0。"""
+"""hr_assistant plugin 单元测试 — v3.0 生产化精简。
+
+删掉 7 类 KB 测试(query_benefits / query_policy / query_process / 等),
+新增 action 路由测试,保留 register 测试(11 manifest)。
+"""
 import json
+import os
 import unittest
 
-from hr_assistant import tools as t
+os.environ.setdefault("AUTH_JWT_SECRET", "dev-secret")
+
 from CorpAI.platform.plugin_manager import PluginRegistry
 from hr_assistant import register
 
 
-class TestBenefits(unittest.TestCase):
-    def test_query_all(self):
-        data = json.loads(t.query_benefits())
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 18)
-
-    def test_query_by_category(self):
-        data = json.loads(t.query_benefits(category="社保"))
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 1)
-        self.assertEqual(data["data"][0]["id"], "B001")
-
-    def test_query_by_id(self):
-        data = json.loads(t.query_benefits(benefit_id="B005"))
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(data["data"][0]["name"], "MacBook Pro 标配")
-
-
-class TestPolicy(unittest.TestCase):
-    def test_query_all(self):
-        data = json.loads(t.query_policy())
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 30)
-
-    def test_query_filter(self):
-        data = json.loads(t.query_policy(topic="年假"))
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(data["data"][0]["id"], "P001")
-
-    def test_query_no_match(self):
-        data = json.loads(t.query_policy(topic="不存在的policy_keyword_xyz"))
-        self.assertEqual(data["status"], "no_data")
-
-
-class TestProcess(unittest.TestCase):
-    def test_query_all(self):
-        data = json.loads(t.query_process())
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 12)
-
-    def test_query_filter(self):
-        data = json.loads(t.query_process(topic="离职"))
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(data["data"][0]["id"], "PR001")
-
-
-class TestOnboarding(unittest.TestCase):
-    def test_query_all(self):
-        data = json.loads(t.query_onboarding())
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 6)
-
-    def test_query_filter(self):
-        data = json.loads(t.query_onboarding(topic="面试"))
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(data["data"][0]["id"], "ON001")
-
-
-class TestCompensation(unittest.TestCase):
-    def test_query_all(self):
-        data = json.loads(t.query_compensation())
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 6)
-
-    def test_query_filter(self):
-        data = json.loads(t.query_compensation(topic="年终奖"))
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(data["data"][0]["id"], "C002")
-
-
-class TestDevelopment(unittest.TestCase):
-    def test_query_all(self):
-        data = json.loads(t.query_development())
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 6)
-
-    def test_query_filter(self):
-        data = json.loads(t.query_development(topic="导师"))
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(data["data"][0]["id"], "D004")
-
-
-class TestWelfare(unittest.TestCase):
-    def test_query_all(self):
-        data = json.loads(t.query_welfare())
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 4)
+def _make_token(user_id: str, scopes: list[str]) -> str:
+    """生成测试用 JWT。"""
+    from CorpAI.platform.auth.tokens import make_access_token
+    secret = os.environ.get("AUTH_JWT_SECRET", "dev-secret")
+    return make_access_token(user_id, "t1", "default", scopes, secret)
 
 
 class TestPrompts(unittest.TestCase):
-    def test_summarize_benefits(self):
-        from hr_assistant.prompts import summarize_benefits
-        p = summarize_benefits()
+    def test_summarize_action(self):
+        from hr_assistant.prompts import summarize_action
+        p = summarize_action()
         self.assertIn("query", p.input_variables)
 
-    def test_summarize_policy(self):
-        from hr_assistant.prompts import summarize_policy
-        p = summarize_policy()
-        self.assertIn("query", p.input_variables)
-
-    def test_llm_prompt_exists(self):
+    def test_llm_prompt_focused_on_actions(self):
+        """v3.0:Llm prompt 不再提 7 类 KB,只讲 9 操作 + 3 bridge。"""
         from hr_assistant.prompts import HR_ASSISTANT_LLM_PROMPT
-        self.assertTrue(len(HR_ASSISTANT_LLM_PROMPT) > 0)
+        self.assertIn("submit_leave", HR_ASSISTANT_LLM_PROMPT)
+        self.assertIn("approve_request", HR_ASSISTANT_LLM_PROMPT)
+        self.assertIn("cross_query_faq", HR_ASSISTANT_LLM_PROMPT)
+        # 不再提 KB 类玩具
+        self.assertNotIn("B001", HR_ASSISTANT_LLM_PROMPT)
+        self.assertNotIn("P001", HR_ASSISTANT_LLM_PROMPT)
 
 
 class TestRegister(unittest.TestCase):
-    def test_register_18_manifests(self):
+    def test_register_11_manifests_no_kb(self):
+        """v3.0:11 manifest = 1 agent + 8 ops + 2 bridge(无 7 KB manifest)。"""
         r = PluginRegistry()
         register(r)
-        self.assertEqual(len(r.list_all()), 18)  # 1 agent + 7 KB + 8 ops + 2 bridge
+        manifests = r.list_all()
+        names = {m.name for m in manifests}
+        # 期望:agent + 8 ops + 2 bridge = 11
+        self.assertEqual(len(manifests), 11)
+        # 7 个 KB manifest 已删
+        for kb in ("hr_assistant_benefits_mcp", "hr_assistant_policy_mcp",
+                   "hr_assistant_process_mcp", "hr_assistant_onboarding_mcp",
+                   "hr_assistant_compensation_mcp", "hr_assistant_development_mcp",
+                   "hr_assistant_welfare_mcp"):
+            self.assertNotIn(kb, names, f"{kb} 应被删除")
+        # 9 ops + 2 bridge 还在
+        self.assertIn("hr_assistant_leave_mcp", names)
+        self.assertIn("hr_assistant_reim_mcp", names)
+        self.assertIn("hr_assistant_cert_mcp", names)
+        self.assertIn("hr_assistant_asset_mcp", names)
+        self.assertIn("hr_assistant_train_mcp", names)
+        self.assertIn("hr_assistant_reg_mcp", names)
+        self.assertIn("hr_assistant_approve_mcp", names)
+        self.assertIn("hr_assistant_my_mcp", names)
+        self.assertIn("hr_assistant_bridge_faq_mcp", names)
+        self.assertIn("hr_assistant_bridge_devops_mcp", names)
+
+    def test_register_agent_has_action_scope(self):
+        r = PluginRegistry()
+        register(r)
         self.assertEqual(r.get("hr_assistant").permissions, ["hr:read", "hr:write"])
-        self.assertEqual(r.get("hr_assistant_policy_mcp").mcp_tool_name, "query_policy")
-        self.assertEqual(r.get("hr_assistant_leave_mcp").mcp_tool_name, "submit_leave")
-        self.assertEqual(r.get("hr_assistant_bridge_devops_mcp").permissions, ["hr:write"])
+        # ops 工具需 hr:write
+        self.assertEqual(r.get("hr_assistant_leave_mcp").permissions, ["hr:write"])
+        # query_my 是 chat:write
+        self.assertEqual(r.get("hr_assistant_my_mcp").permissions, ["chat:write"])
 
     def test_register_all_mcp_have_permissions(self):
         r = PluginRegistry()
