@@ -76,6 +76,18 @@ A2A_CALL_TOTAL = _get_or_create(
     "A2A calls", ["agent", "status"],
 )
 
+HR_ACTION_TOTAL = _get_or_create(
+    Counter, "hr_action_total",
+    "HR 操作类工具调用次数(action=submit_leave/cancel_leave/approve_request 等;status=ok/forbidden/invalid/not_found/error)",
+    ["action", "status"],
+)
+
+HR_BRIDGE_ERRORS_TOTAL = _get_or_create(
+    Counter, "hr_bridge_errors_total",
+    "HR 跨插件 bridge 调用失败计数(target=faq/devops;kind=timeout/unreachable/4xx/5xx)",
+    ["target", "kind"],
+)
+
 # ─── App metadata ───
 APP_INFO = _get_or_create(Info, "corpai_app", "CorpAI app metadata", [])
 APP_INFO.info({"version": "phase4", "component": "observability"})
@@ -98,6 +110,8 @@ __all__ = [
     "LLM_CALL_TOTAL",
     "LLM_CALL_DURATION",
     "A2A_CALL_TOTAL",
+    "HR_ACTION_TOTAL",
+    "HR_BRIDGE_ERRORS_TOTAL",
     "APP_INFO",
     "endpoint_label",
     "_get_or_create",

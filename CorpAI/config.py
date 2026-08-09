@@ -100,7 +100,7 @@ class Config:
         self.weather_schedule_time = _env("WEATHER_SCHEDULE_TIME", "01:00")
 
         # ── Milvus ──
-        self.milvus_host = _env("MILVUS_HOST", "192.168.88.100")
+        self.milvus_host = _env("MILVUS_HOST", "localhost")
         self.milvus_port = _env_int("MILVUS_PORT", 19530)
         # Phase 7:删除 tour_group_collection(旅行 plugin 已删,无业务使用)
         self.faq_collection = _env("FAQ_COLLECTION", "faq_docs")  # Phase 5 faq plugin 加

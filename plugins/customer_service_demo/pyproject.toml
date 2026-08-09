@@ -1,9 +1,0 @@
-[project]
-name = "corpai-plugin-customer-service-demo"
-version = "0.0.1"
-description = "Scaffold demo plugin — entry_points 验证 plugin_manager.discover_all()"
-requires-python = ">=3.11"
-dependencies = []
-
-[project.entry-points."platform.plugins"]
-customer_service_demo = "customer_service_demo.plugin:register"

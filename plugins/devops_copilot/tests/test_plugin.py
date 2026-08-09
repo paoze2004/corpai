@@ -22,9 +22,9 @@ def _make_token(scopes: list[str]) -> str:
 
 class TestIncident(unittest.TestCase):
     def test_query_all(self):
-        data = json.loads(t.query_incident())
+        data = json.loads(t.query_incident(limit=100))
         self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 3)
+        self.assertEqual(len(data["data"]), 25)  # v3.0:扩到 25 条
 
     def test_query_filter_id(self):
         data = json.loads(t.query_incident(incident_id="INC-001"))
@@ -34,7 +34,30 @@ class TestIncident(unittest.TestCase):
     def test_query_filter_status(self):
         data = json.loads(t.query_incident(status="resolved"))
         self.assertEqual(data["status"], "success")
-        self.assertEqual(len(data["data"]), 1)
+        self.assertEqual(len(data["data"]), 4)  # INC-003/006/015/021
+
+    def test_query_filter_priority(self):
+        data = json.loads(t.query_incident(priority="P0"))
+        self.assertEqual(data["status"], "success")
+        self.assertGreaterEqual(len(data["data"]), 3)  # INC-001/005/011
+
+    def test_get_stats(self):
+        data = json.loads(t.get_incident_stats())
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["data"]["total"], 25)
+        self.assertIn("P0", data["data"]["by_priority"])
+
+    def test_list_p0_open(self):
+        data = json.loads(t.list_open_p0_incidents())
+        self.assertEqual(data["status"], "success")
+        for inc in data["data"]:
+            self.assertEqual(inc["priority"], "P0")
+            self.assertNotEqual(inc["status"], "resolved")
+
+    def test_search_keyword(self):
+        data = json.loads(t.search_incidents_by_keyword("API"))
+        self.assertEqual(data["status"], "success")
+        self.assertGreater(len(data["data"]), 0)
 
 
 class TestOncall(unittest.TestCase):
@@ -99,14 +122,29 @@ class TestPrompts(unittest.TestCase):
 
 
 class TestRegister(unittest.TestCase):
-    def test_register_3_manifests_with_rbac(self):
+    def test_register_10_manifests_with_rbac(self):
         r = PluginRegistry()
         register(r)
-        self.assertEqual(len(r.list_all()), 3)
-        # RBAC showcase:k8s mcp 单独 devops:write,其他 devops:read
+        self.assertEqual(len(r.list_all()), 10)  # v3.0:1 agent + 9 tools (含 2 bridge)
+        # RBAC:k8s mcp 单独 devops:write
         self.assertEqual(r.get("devops_copilot_k8s_mcp").permissions, ["devops:write"])
         self.assertIn("devops:read", r.get("devops_copilot_incident_mcp").permissions)
         self.assertIn("devops:write", r.get("devops_copilot").permissions)
+        # bridge mcp
+        self.assertIn("devops:read", r.get("devops_copilot_bridge_hr_mcp").permissions)
+        self.assertIn("devops:read", r.get("devops_copilot_bridge_faq_mcp").permissions)
+
+    def test_register_all_mcp_have_permissions(self):
+        r = PluginRegistry()
+        register(r)
+        for m in r.list_all():
+            self.assertGreater(len(m.permissions), 0, f"{m.name} 无 permissions")
+
+    def test_action_tools_mcp_tool_name_unique(self):
+        r = PluginRegistry()
+        register(r)
+        names = [m.mcp_tool_name for m in r.list_all() if m.mcp_tool_name]
+        self.assertEqual(len(names), len(set(names)), f"mcp_tool_name 重复:{names}")
 
 
 if __name__ == "__main__":

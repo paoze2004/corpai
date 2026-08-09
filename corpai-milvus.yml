@@ -1,0 +1,109 @@
+# corpai-milvus.yml — CorpAI 知识库向量检索(Milvus standalone)
+#
+# 启停:
+#   启: docker compose -f corpai-milvus.yml up -d
+#   停: docker compose -f corpai-milvus.yml down          # 保留数据
+#   清: docker compose -f corpai-milvus.yml down --volumes # 删命名卷
+#
+# 健康:
+#   curl http://localhost:9091/healthz    # → {"status":"ok"}
+#   curl http://localhost:9000/minio/health/live
+#
+# 镜像版本说明:
+#   - milvus v2.5.15: 稳定版,与本地 PyMilvus 3.0.0 客户端兼容
+#   - etcd v3.5.25:   Milvus 2.5 推荐
+#   - minio 2024-12-18: Milvus 2.5 推荐
+#   - attu v2.5.7:    与 milvus v2.5.x 配套
+#
+# 端口冲突说明:
+#   Attu 用 8012 而非 8010(原 docker-compose.yml 的设置),因 hr_assistant
+#   的 insurance_mcp 已占 :8010,见 CorpAI/scripts/run_all.py。
+#
+# 数据持久化:
+#   - corpai_etcd    元数据
+#   - corpai_minio   对象存储(S3 兼容)
+#   - corpai_milvus  向量索引与段文件
+#   Windows 上命名卷由 Docker Desktop WSL2 托管,避开 bind-mount 的 UID/GID 坑。
+name: corpai-milvus
+
+services:
+  etcd:
+    container_name: corpai-etcd
+    image: quay.io/coreos/etcd:v3.5.25
+    # 只暴露给内部网络;不映射 host 端口(没必要)
+    volumes:
+      - corpai_etcd:/etcd
+    command: >
+      etcd -advertise-client-urls=http://etcd:2379
+           -listen-client-urls http://0.0.0.0:2379
+           --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    container_name: corpai-minio
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9000:9000"   # S3 API (Milvus 内部用)
+      - "9001:9001"   # Console UI
+    volumes:
+      - corpai_minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  standalone:
+    container_name: corpai-milvus
+    image: milvusdb/milvus:v2.5.15
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MQ_TYPE: rocksmq        # Milvus 2.5 standalone 唯一内置 MQ;woodpecker 不支持
+    volumes:
+      - corpai_milvus:/var/lib/milvus
+    mem_limit: 4g             # standalone 典型 2-4GB;主机 28GB 留余
+    ports:
+      - "19530:19530"         # gRPC,PyMilvus 连这个
+      - "9091:9091"           # HTTP health/metrics
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 15s
+      start_period: 90s       # 冷启动慢,首次拉镜像后约 60-90s 才 ready
+      timeout: 10s
+      retries: 8
+    restart: unless-stopped
+
+  attu:
+    container_name: corpai-attu
+    image: zilliz/attu:v2.5.7
+    environment:
+      MILVUS_URL: standalone:19530
+    ports:
+      - "8012:3000"           # 避开 hr_assistant insurance_mcp :8010
+    depends_on:
+      - standalone
+    restart: unless-stopped
+
+volumes:
+  corpai_etcd:
+  corpai_minio:
+  corpai_milvus:

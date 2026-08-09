@@ -36,4 +36,11 @@ uv pip install -e plugins/faq
 
 ## 检索方式
 
-当前 Phase:关键字 + token overlap 评分。后续接 Milvus 做语义检索。
+**Milvus**(IVF_FLAT + COSINE, dim=1536)语义检索 — MiniMax `embo-01` embedding。
+
+- `query_faq(text)` → 走 Milvus 语义搜索;**Milvus 不可达硬失败 raise**(CLAUDE.md 不 silent-fail)
+- `query_faq_inmemory_fallback(text)` → 测试 / 运维兜底,关键词打分,不依赖 Milvus
+- 启动时 `seed.py` 同步灌入 12 条 FAQ 到 Milvus;upsert 失败仅 warn + counter,plugin 继续启动
+- 指标:`rag_query_total{backend}` + `rag_query_errors_total{kind}`(Prometheus)
+
+详见 `docs/PLUGINS.md §12` Milvus 部署。

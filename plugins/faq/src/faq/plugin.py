@@ -5,26 +5,26 @@ from faq.prompts import FAQ_LLM_PROMPT
 
 AGENT_MANIFEST = PluginManifest(
     name="faq",
-    version="1.0.0",
-    description="FAQ RAG:跨企业文档语义检索(Milvus;Phase 5 简化版降级内存搜索)。",
+    version="1.1.0",
+    description="FAQ RAG:跨企业 KB 语义检索(Milvus + MiniMax embo-01 embedding;查询 Milvus 不可达时硬失败)。",
     plugin_type="llm_agent",
     endpoint="http://localhost:5030",
     llm_prompt=FAQ_LLM_PROMPT,
     summary_prompt="summarize_faq",
     required_intents=["faq"],
     permissions=["faq:read"],
-    tags=["rag", "knowledge-base", "search"],
+    tags=["rag", "knowledge-base", "search", "milvus", "embedding"],
 )
 
 QUERY_TOOL = PluginManifest(
     name="faq_query_mcp",
-    version="1.0.0",
-    description="Milvus 语义检索 — query_faq(query_text, collection=None)。",
+    version="1.1.0",
+    description="Milvus 语义检索 — query_faq(query_text, collection=None, limit=3)。",
     plugin_type="mcp_tool",
     endpoint="http://localhost:8030",
     mcp_tool_name="query_faq",
     permissions=["faq:read"],
-    tags=["rag", "milvus"],
+    tags=["rag", "milvus", "embedding"],
 )
 
 

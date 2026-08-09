@@ -1,0 +1,20 @@
+# corpai-redis.yml — 占位
+#
+# ⚠️ DO NOT RUN YET — Redis 暂未纳入 CorpAI 平台栈。
+# Milvus standalone 内部用 Woodpecker MQ,不依赖外部 Redis。
+# 待未来 Phase 引入 Redis(会话缓存/限流)时再启用本文件。
+#
+# 计划字段(占位):
+# services:
+#   redis:
+#     container_name: corpai-redis
+#     image: redis:7.4-alpine
+#     ports: ["6379:6379"]
+#     volumes: [corpai_redis:/data]
+#     healthcheck:
+#       test: ["CMD", "redis-cli", "ping"]
+#       interval: 10s
+#       retries: 5
+# volumes:
+#   corpai_redis:
+name: corpai-redis

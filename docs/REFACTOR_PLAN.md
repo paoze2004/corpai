@@ -184,7 +184,7 @@ platform/orchestrator/
 ### Phase 3-5(新增管理后台 + 示范插件)
 
 - **新增** `static/admin/{index,agents,tools,users,logs,metrics}.html`(vanilla JS,5 页)
-- **Phase 5 计划**:`plugins/customer_service/{plugin.py,mcp_server.py,prompts.py}`(从 `agents/weather.py` + `agents/ticket.py` + `tools/weather.py` + `tools/ticket.py` 改造)— **Phase 7 已整体删除,未交付**
+- **Phase 5 计划**:`plugins/customer_service_demo/{plugin.py,README.md}`(17 行 scaffold,验证 `discover_all()`)— **已整体删除**;真业务由 `hr_assistant` / `devops_copilot` / `faq` 3 个真 plugin 承担
 - **新增** `plugins/hr_assistant/{plugin.py,prompts.py,server.py,tools.py}`(从 `tools/trip.py:477-512` `query_insurance` 改造 + 新政策 KB)
 - **新增** `plugins/devops_copilot/{plugin.py,prompts.py,server.py,tools.py}`(从 `tools/trip.py:394-425` 改造 + 新 K8s/Jira 适配器)
 - **新增** `plugins/faq/{plugin.py,prompts.py,server.py,retriever.py,seed.py}`(从 `tools/trip.py:88-287` 改造 RAG,Phase 7 已删旅游脚本)

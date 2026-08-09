@@ -197,8 +197,8 @@ MYSQL_USER=admin
 MYSQL_PASSWORD=<your-password>
 MYSQL_DATABASE=CorpAI
 
-# Milvus(faq plugin 用)
-MILVUS_HOST=192.168.88.100
+# Milvus(faq plugin 用,docker compose -f corpai-milvus.yml up -d 启)
+MILVUS_HOST=localhost
 MILVUS_PORT=19530
 EMBEDDING_MODEL=embo-01
 EMBEDDING_DIM=1536
