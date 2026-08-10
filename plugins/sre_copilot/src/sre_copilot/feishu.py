@@ -418,9 +418,11 @@ def update_message_card(
         }
 
 
+        # v3.4.8:确认 PATCH 发的 card 结构对(schema + body.elements)
         logger.info(
-            "飞书 PATCH card payload=%s",
-            payload
+            "飞书 PATCH card payload schema=%s tags=%s",
+            card.get("schema"),
+            [e.get("tag") for e in card.get("body", {}).get("elements", [])],
         )
 
 
