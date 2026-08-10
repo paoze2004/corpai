@@ -32,6 +32,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+
+from redis.exceptions import TimeoutError as RedisTimeoutError
 import os
 import time
 import uuid
@@ -163,8 +165,9 @@ class ActionExecutor:
             except asyncio.CancelledError:
                 logger.info("Executor 被取消,退出")
                 break
-            except TimeoutError:
-                # v3.2:Redis BLOCK 超时是预期,刷 INFO 即可(不打 stacktrace)
+            except RedisTimeoutError:
+                # v3.2.2:redis-py 8.x 的 TimeoutError 不是 builtin TimeoutError 子类,
+                # 必须单独抓。Redis BLOCK 超时是预期,刷 INFO 即可(不打 stacktrace)。
                 logger.info("consumer idle,等待下一个 plan...")
             except Exception as exc:
                 logger.exception(f"消费循环异常:{exc}")
