@@ -477,7 +477,7 @@ def build_approved_card(
             {"tag": "hr"},
             {"tag": "div", "text": {
                 "tag": "lark_md",
-                "content": f"**{decision_text}**",
+                "content": decision_text,
             }},
             {"tag": "note", "elements": [{
                 "tag": "plain_text",
@@ -485,6 +485,43 @@ def build_approved_card(
             }]},
         ],
     }
+
+
+def get_feishu_user_name(open_id: str) -> str:
+    """open_id → 用户名(调飞书 contact/v3/users/{open_id})。
+
+    飞书 callback 不直接返中文名,只返 open_id。要展示"张三"得主动查。
+
+    失败 fallback 回 open_id(总是返 str,不抛)。
+    """
+    if not open_id or not is_configured():
+        return open_id
+    token = _get_tenant_access_token()
+    if not token:
+        return open_id
+    try:
+        r = requests.get(
+            f"https://open.feishu.cn/open-apis/contact/v3/users/{open_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"user_id_type": "open_id"},
+            timeout=5,
+        )
+        if r.status_code != 200:
+            logger.warning(f"飞书用户查询失败 {r.status_code}:{r.text[:200]}")
+            return open_id
+        data = r.json()
+        if data.get("code", -1) != 0:
+            logger.warning(f"飞书用户查询业务错:{data}")
+            return open_id
+        user = (data.get("data") or {}).get("user") or {}
+        return (
+            user.get("name")
+            or user.get("en_name")
+            or open_id
+        )
+    except Exception as exc:
+        logger.warning(f"飞书用户查询异常:{exc}")
+        return open_id
 
 
 def _fetch_plan_for_card_update(plan_id: int) -> dict | None:

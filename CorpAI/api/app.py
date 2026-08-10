@@ -179,6 +179,15 @@ async def feishu_event_handler(request: Request) -> dict:
     # 两条路径都支持,根据 event_type / type 字段判断走哪条
     event_type = payload.get("header", {}).get("event_type", "")
     legacy_type = payload.get("type", "")
+
+    # v3.4:校验 header.token(防 callback 伪造 — 不校验别人能 POST 任意 plan_id+token 进来)
+    expected_verify = os.getenv("FEISHU_VERIFY_TOKEN", "").strip()
+    if expected_verify:
+        header_token = payload.get("header", {}).get("token", "") if event_type else payload.get("token", "")
+        if not header_token or header_token != expected_verify:
+            logger.warning(f"飞书 callback header.token 校验失败:presented={header_token[:8] if header_token else '(空)'}... vs expected={expected_verify[:8]}...")
+            return {"code": -1, "msg": "verify_token_mismatch"}
+
     if event_type == "card.action.trigger" or legacy_type == "card_action_trigger":
         # v2 走 payload.event.{action,operator};v1 走 payload.{action,operator}
         if event_type == "card.action.trigger":
@@ -198,7 +207,14 @@ async def feishu_event_handler(request: Request) -> dict:
         if not (plan_id and token):
             logger.warning(f"飞书 callback 缺 plan_id/token:{value}")
             return {"code": -1, "msg": "missing_plan_id_or_token"}
-        actor = operator.get("open_id") or operator.get("user_id") or "feishu_user"
+        actor_open_id = operator.get("open_id") or operator.get("user_id") or "feishu_user"
+        # v3.4:open_id → 真名(调飞书 contact/v3/users/{open_id}),失败回退 open_id
+        try:
+            from sre_copilot.feishu import get_feishu_user_name
+            actor = get_feishu_user_name(actor_open_id)
+        except Exception as exc:
+            logger.warning(f"open_id→name 转换失败,fallback:{exc}")
+            actor = actor_open_id
         scopes = ["sre:approve"]
         logger.info(
             f"飞书卡片 callback op={op} plan_id={plan_id} actor={actor}",
