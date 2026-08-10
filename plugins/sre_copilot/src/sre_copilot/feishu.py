@@ -174,6 +174,8 @@ def build_incident_card(
             # 飞书 v2 schema — schema 字段是飞书识别新版卡片的标记,
             # 没有 schema 字段的卡 PATCH 更新可能静默失败。
             # config.update_multi: true 让原卡可被多人同步更新。
+            # v3.4.3:elements 必须包在 body 里(v2 schema 要求),
+            # 不在顶层 — 否则飞书报 'parse card json err: unknown property elements'
             "schema": "2.0",
             "config": {"update_multi": True},
             "header": {
@@ -183,63 +185,65 @@ def build_incident_card(
                 },
                 "template": "red" if severity == "critical" else "orange",
             },
-            "elements": [
-                {
-                    "tag": "div",
-                    "fields": [
-                        {"is_short": True, "text": {
-                            "tag": "lark_md",
-                            "content": f"**Incident**\n{incident_id}",
-                        }},
-                        {"is_short": True, "text": {
-                            "tag": "lark_md",
-                            "content": f"**Service**\n{service}",
-                        }},
-                        {"is_short": True, "text": {
-                            "tag": "lark_md",
-                            "content": f"**Severity**\n{severity}",
-                        }},
-                        {"is_short": True, "text": {
-                            "tag": "lark_md",
-                            "content": f"**Risk**\n{risk_emoji} {risk_level}",
-                        }},
-                    ],
-                },
-                {"tag": "hr"},
-                {"tag": "div", "text": {
-                    "tag": "lark_md",
-                    "content": f"**AI 建议方案**\n{plan_summary}",
-                }},
-                {"tag": "hr"},
-                {
-                    "tag": "action",
-                    "actions": [
-                        {"tag": "button", "text": {
-                            "tag": "plain_text", "content": "✅ 批准执行",
-                        }, "type": "primary",
-                           "value": {
-                               "plan_id": plan_id,
-                               "token": approval_token,
-                               "op": "approve",
-                           }},
-                        {"tag": "button", "text": {
-                            "tag": "plain_text", "content": "❌ 拒绝",
-                        }, "type": "danger",
-                           "value": {
-                               "plan_id": plan_id,
-                               "token": approval_token,
-                               "op": "reject",
-                           }},
-                    ],
-                },
-                {"tag": "note", "elements": [{
-                    "tag": "plain_text",
-                    "content": (
-                        "⏱ 30 分钟内未操作视为超时,Incident 将自动 escalated。"
-                        "批准/拒绝前请确认 service 当前流量已切走。"
-                    ),
-                }]},
-            ],
+            "body": {
+                "elements": [
+                    {
+                        "tag": "div",
+                        "fields": [
+                            {"is_short": True, "text": {
+                                "tag": "lark_md",
+                                "content": f"**Incident**\n{incident_id}",
+                            }},
+                            {"is_short": True, "text": {
+                                "tag": "lark_md",
+                                "content": f"**Service**\n{service}",
+                            }},
+                            {"is_short": True, "text": {
+                                "tag": "lark_md",
+                                "content": f"**Severity**\n{severity}",
+                            }},
+                            {"is_short": True, "text": {
+                                "tag": "lark_md",
+                                "content": f"**Risk**\n{risk_emoji} {risk_level}",
+                            }},
+                        ],
+                    },
+                    {"tag": "hr"},
+                    {"tag": "div", "text": {
+                        "tag": "lark_md",
+                        "content": f"**AI 建议方案**\n{plan_summary}",
+                    }},
+                    {"tag": "hr"},
+                    {
+                        "tag": "action",
+                        "actions": [
+                            {"tag": "button", "text": {
+                                "tag": "plain_text", "content": "✅ 批准执行",
+                            }, "type": "primary",
+                               "value": {
+                                   "plan_id": plan_id,
+                                   "token": approval_token,
+                                   "op": "approve",
+                               }},
+                            {"tag": "button", "text": {
+                                "tag": "plain_text", "content": "❌ 拒绝",
+                            }, "type": "danger",
+                               "value": {
+                                   "plan_id": plan_id,
+                                   "token": approval_token,
+                                   "op": "reject",
+                               }},
+                        ],
+                    },
+                    {"tag": "note", "elements": [{
+                        "tag": "plain_text",
+                        "content": (
+                            "⏱ 30 分钟内未操作视为超时,Incident 将自动 escalated。"
+                            "批准/拒绝前请确认 service 当前流量已切走。"
+                        ),
+                    }]},
+                ],
+            },
         },
     }
 
@@ -454,40 +458,42 @@ def build_approved_card(
             },
             "template": "green",
         },
-        "elements": [
-            {"tag": "div", "fields": [
-                {"is_short": True, "text": {
+        "body": {
+            "elements": [
+                {"tag": "div", "fields": [
+                    {"is_short": True, "text": {
+                        "tag": "lark_md",
+                        "content": f"**Incident**\n{incident_id}",
+                    }},
+                    {"is_short": True, "text": {
+                        "tag": "lark_md",
+                        "content": f"**Service**\n{service}",
+                    }},
+                    {"is_short": True, "text": {
+                        "tag": "lark_md",
+                        "content": f"**Severity**\n{severity}",
+                    }},
+                    {"is_short": True, "text": {
+                        "tag": "lark_md",
+                        "content": f"**Risk**\n{risk_emoji} {risk_level}",
+                    }},
+                ]},
+                {"tag": "hr"},
+                {"tag": "div", "text": {
                     "tag": "lark_md",
-                    "content": f"**Incident**\n{incident_id}",
+                    "content": f"**AI 建议方案**\n{plan_summary}",
                 }},
-                {"is_short": True, "text": {
+                {"tag": "hr"},
+                {"tag": "div", "text": {
                     "tag": "lark_md",
-                    "content": f"**Service**\n{service}",
+                    "content": decision_text,
                 }},
-                {"is_short": True, "text": {
-                    "tag": "lark_md",
-                    "content": f"**Severity**\n{severity}",
-                }},
-                {"is_short": True, "text": {
-                    "tag": "lark_md",
-                    "content": f"**Risk**\n{risk_emoji} {risk_level}",
-                }},
-            ]},
-            {"tag": "hr"},
-            {"tag": "div", "text": {
-                "tag": "lark_md",
-                "content": f"**AI 建议方案**\n{plan_summary}",
-            }},
-            {"tag": "hr"},
-            {"tag": "div", "text": {
-                "tag": "lark_md",
-                "content": decision_text,
-            }},
-            {"tag": "note", "elements": [{
-                "tag": "plain_text",
-                "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
-            }]},
-        ],
+                {"tag": "note", "elements": [{
+                    "tag": "plain_text",
+                    "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
+                }]},
+            ],
+        },
     }
 
 
