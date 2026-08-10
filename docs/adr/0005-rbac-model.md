@@ -188,7 +188,7 @@ def write_audit_log(...):
 - **Phase 3 手工验收**:
   - `super_admin` 登录 → 看到所有租户 + 所有插件
   - `admin`(tenant A)登录 → 只看到 tenant A 的插件
-  - `employee` 登录 → 看不到 `devops_copilot` 插件
+  - `employee` 登录 → 看不到 `sre_copilot` 插件
   - 删除 `employee` 的 `cs:read` scope → 聊天触发客服插件 → 403
 - **Phase 4 验收**:audit log 写入失败时返回 500(不是静默通过)
 

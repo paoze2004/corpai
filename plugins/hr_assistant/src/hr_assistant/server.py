@@ -7,14 +7,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
 
-from hr_assistant import actions as a
-from hr_assistant.prompts import HR_ASSISTANT_LLM_PROMPT
 from langchain_openai import ChatOpenAI
-from python_a2a import A2AServer, AgentCard, AgentSkill, Task, TaskStatus, TaskState
+from python_a2a import A2AServer, AgentCard, AgentSkill, Task, TaskState, TaskStatus
 
 from CorpAI.config import Config
+from hr_assistant import actions as a
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +100,7 @@ def _dispatch_action(action: str, text: str) -> str:
     生产应该让 A2A server 从 task.metadata 拿 auth(待 python_a2a 支持)。
     这里用 dev token 跑通链路,生产场景在 admin_api/admin_router 加 token 注入。
     """
-    dev_token = "Bearer DEV_TOKEN"  # devops_copilot 同样模式
+    dev_token = "Bearer DEV_TOKEN"  # sre_copilot 同样模式
     if action == "submit_leave":
         return a.submit_leave(
             authorization=dev_token, leave_type="annual",
@@ -178,8 +176,8 @@ class HrAssistantServer(A2AServer):
                 AgentSkill(id="query_my_requests", name="我的申请", description="查自己提交的申请"),
                 # bridge 3 类
                 AgentSkill(id="cross_query_faq", name="FAQ 兜底", description="HR KB 未命中时调 faq 补全"),
-                AgentSkill(id="cross_check_devops", name="DevOps 去重", description="资产申请前查 devops 是否重复"),
-                AgentSkill(id="cross_notify_devops", name="查 Oncall", description="审批后查 devops oncall 联系方式"),
+                AgentSkill(id="cross_check_sre", name="SRE 去重", description="资产申请前查 SRE 是否重复"),
+                AgentSkill(id="cross_notify_sre", name="查 Oncall", description="审批后查 SRE oncall 联系方式"),
             ],
         )
         super().__init__(agent_card=card)

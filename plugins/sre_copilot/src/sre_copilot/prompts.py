@@ -1,7 +1,7 @@
-"""devops_copilot plugin prompts — v3.0 生产化精简。
+"""sre_copilot plugin prompts — v3.1 生产化精简 + 重组。
 
 删掉 summarize_k8s_action(原 restart_pod 是 dry_run 玩具,get_pod_logs 不需单独 summary)。
-DEVOPS_LLM_PROMPT 也精简:4 真工具,无玩具。
+SRE_LLM_PROMPT 也精简:4 真工具,无玩具。
 """
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -17,7 +17,7 @@ def summarize_incident() -> ChatPromptTemplate:
     """
     return ChatPromptTemplate.from_template(
 """
-系统提示:您是 DevOps 副驾。raw_response 是 ground truth。
+系统提示:您是 SRE Copilot。raw_response 是 ground truth。
 强规则(违反即错):
 - 若 query 提到"最近/全部/列表",raw_response.data 里有 N 条工单就必须输出 N 条(编号 1./2./.../N.)
 - 每条工单必须含:id + title + priority + status + assignee + team,缺一不可
@@ -33,7 +33,7 @@ def summarize_incident() -> ChatPromptTemplate:
 """)
 
 
-DEVOPS_LLM_PROMPT = """您是企业 DevOps 副驾 v3.0,帮 SRE/工程师快速处理生产事件。
+SRE_LLM_PROMPT = """您是企业 SRE Copilot v3.1,帮 SRE/工程师快速处理生产事件。
 
 可调用工具(4 个,全部接真 SDK):
 - query_incident(incident_id, status, priority, limit) → Jira REST API(JIRA_URL+JIRA_TOKEN)

@@ -6,7 +6,7 @@
 #   make run-api        启 FastAPI 后端
 #   ...
 
-.PHONY: help sync test test-unit test-platform test-auth test-observability test-plugins test-phase3 test-phase4 test-phase5 install-plugins migrate-phase2 migrate-phase3 migrate-phase4 bootstrap-superadmin run-api run-hr-assistant run-devops-copilot run-faq clean
+.PHONY: help sync test test-unit test-platform test-auth test-observability test-plugins test-phase3 test-phase4 test-phase5 install-plugins migrate-phase2 migrate-phase3 migrate-phase4 bootstrap-superadmin run-api run-hr-assistant run-sre-copilot run-faq clean
 
 help:  ## 显示帮助
 	@echo "可用命令:"
@@ -28,7 +28,7 @@ help:  ## 显示帮助
 	@echo ""
 	@echo "  make run-api              启动 FastAPI 后端(端口 8080)"
 	@echo "  make run-hr-assistant     启 hr_assistant A2A server(端口 5010)"
-	@echo "  make run-devops-copilot   启 devops_copilot A2A server(端口 5020)"
+	@echo "  make run-sre-copilot   启 sre_copilot A2A server(端口 5020)"
 	@echo "  make run-faq              启 faq A2A server(端口 5030)"
 	@echo ""
 	@echo "  make clean                清理 __pycache__ 和 pytest 缓存"
@@ -57,7 +57,7 @@ test-observability:  ## Phase 4 Observability 单元测试
 
 test-plugins:  ## 3 个真插件单元测试
 	cd plugins/hr_assistant && uv run pytest -m "not integration"
-	cd ../devops_copilot && uv run pytest -m "not integration"
+	cd ../sre_copilot && uv run pytest -m "not integration"
 	cd ../faq && uv run pytest -m "not integration"
 
 test-phase3:  ## Phase 1+2+3 全部单元测试
@@ -69,7 +69,7 @@ test-phase4:  ## Phase 1+2+3+4 全部单元测试
 test-phase5:  ## Phase 1+2+3+4+5 全部单元测试
 	AUTH_JWT_SECRET=dev-secret uv run pytest tests/platform tests/memory_pool tests/auth tests/observability -m "not integration"
 	cd plugins/hr_assistant && uv run pytest -m "not integration"
-	cd ../devops_copilot && uv run pytest -m "not integration"
+	cd ../sre_copilot && uv run pytest -m "not integration"
 	cd ../faq && uv run pytest -m "not integration"
 
 # ==================== 迁移 ====================
@@ -88,7 +88,7 @@ bootstrap-superadmin:  ## 引导第一个 super_admin
 # ==================== 服务启动 ====================
 install-plugins:  ## 装 3 个真插件(本地 editable)
 	uv pip install -e plugins/hr_assistant
-	uv pip install -e plugins/devops_copilot
+	uv pip install -e plugins/sre_copilot
 	uv pip install -e plugins/faq
 
 run-api:  ## 启动 FastAPI 后端
@@ -97,8 +97,8 @@ run-api:  ## 启动 FastAPI 后端
 run-hr-assistant:  ## 启 hr_assistant A2A server(端口 5010)
 	cd plugins/hr_assistant && uv run python -m hr_assistant.entry
 
-run-devops-copilot:  ## 启 devops_copilot A2A server(端口 5020)
-	cd plugins/devops_copilot && uv run python -m devops_copilot.entry
+run-sre-copilot:  ## 启 sre_copilot A2A server(端口 5020)
+	cd plugins/sre_copilot && uv run python -m sre_copilot.entry
 
 run-faq:  ## 启 faq A2A server(端口 5030)
 	cd plugins/faq && uv run python -m faq.entry

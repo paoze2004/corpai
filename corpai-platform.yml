@@ -27,10 +27,10 @@
 #       context: ./plugins/hr_assistant
 #     ports: ["5010:5010", "8010:8010", "8011:8011"]
 #
-#   devops_copilot:
+#   sre_copilot:
 #     container_name: corpai-devops
 #     build:
-#       context: ./plugins/devops_copilot
+#       context: ./plugins/sre_copilot
 #     ports: ["5020:5020", "8020:8020", "8021:8021"]
 #
 #   faq:

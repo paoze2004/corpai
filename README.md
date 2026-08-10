@@ -1,7 +1,11 @@
 # CorpAI - 企业 AI Copilot 平台
 
+[![CI](https://github.com/paoze2004/CorpAI/actions/workflows/ci.yml/badge.svg)](https://github.com/paoze2004/CorpAI/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 > **多 Agent 企业 AI 平台** — 可插拔插件架构,统一 RBAC + 可观测性 + 管理后台。
-> 业务范围:HR(社保/补充医疗/体检/培训)/ DevOps(工单/on-call/K8s)/ FAQ(企业 KB RAG)。
+> 业务范围:HR(社保/补充医疗/体检/培训)/ SRE(工单/on-call/K8s)/ FAQ(企业 KB RAG)。
 > 详见 `CLAUDE.md` 与 `docs/REFACTOR_PLAN.md`。
 
 ## 核心架构
@@ -26,11 +30,18 @@
 ```
 
 - **平台核心**(`CorpAI/platform/`)— RBAC / Orchestrator / Plugin Manager / Observability / DB,业务零依赖
-- **业务 plugin**(`plugins/`)— 3 真 plugin(hr_assistant / devops_copilot / faq),`entry_points` 自动发现
+- **业务 plugin**(`plugins/`)— 3 真 plugin(hr_assistant / sre_copilot / faq),`entry_points` 自动发现
 - **A2A 子代理**:每个 plugin 一个 A2A 进程(Flask + python_a2a)
 - **MCP 工具**:每个 plugin 自带 FastMCP 服务,`POST /tools/{name}` 调用
 - **管理后台**:`/admin` 5 页(agents / tools / users / logs / metrics)
 - **观测**:Prometheus `/metrics` + trace_id + 结构化日志 + `call_records` 表
+
+## 工程化
+
+- **CI/CD**:`.github/workflows/ci.yml` — push/PR 触发 lint + test + build;`.github/workflows/deploy.yml` — 手动 dispatch 多架构镜像到 GHCR
+- **pre-commit**:`.pre-commit-config.yaml` — 本地 ruff check + format(commit 前自动跑)
+- **Docker**:`Dockerfile.api` + `Dockerfile.plugin` 多阶段、非 root、healthcheck,3 个 plugin 复用同一镜像模板
+- **Lint**:ruff(E/F/W/I/B/C4/UP/SIM/RUF,line-length=100)
 
 ## 技术栈
 
@@ -52,7 +63,7 @@
 | Plugin | 场景 | A2A | MCP 工具 |
 |--------|------|-----|---------|
 | **hr_assistant** | 员工福利查询 + 人事政策 | :5010 | `query_benefits`(:8010) / `query_policy`(:8011) |
-| **devops_copilot** | 工单查询 + on-call 联系 + Pod 重启 | :5020 | `query_incident`(:8020) / `restart_pod`(:8021, dry_run) |
+| **sre_copilot** | 工单查询 + on-call 联系 + Pod 重启 | :5020 | `query_incident`(:8020) / `restart_pod`(:8021, dry_run) |
 | **faq** | 企业 KB 语义检索(VPN/远程办公/差旅等) | :5030 | `query_faq`(:8030) |
 
 ## 项目结构
@@ -90,7 +101,7 @@ CorpAI/                              ← 项目根
 │   └── static/                         # 前端 SPA + admin/
 ├── plugins/                            # 业务 plugin(可插拔)
 │   ├── hr_assistant/                   # 福利/政策 8+10 条数据
-│   ├── devops_copilot/                 # 8 工单 + 4 on-call 团队
+│   ├── sre_copilot/                 # 8 工单 + 4 on-call 团队
 │   └── faq/                            # 12 条企业 KB(VPN/远程办公/差旅等)
 ├── tests/                              # pytest
 │   ├── platform/                       # orchestrator 模块测试
@@ -152,14 +163,14 @@ $AUTH_JWT_SECRET=dev-secret uv run python scripts/bootstrap_super_admin.py
 
 ```bash
 make install-plugins
-# 等价于:uv pip install -e plugins/hr_assistant -e plugins/devops_copilot -e plugins/faq
+# 等价于:uv pip install -e plugins/hr_assistant -e plugins/sre_copilot -e plugins/faq
 ```
 
 ### 3. 启 plugin 服务(3 个进程)
 
 ```bash
 make run-hr-assistant        # A2A :5010 + benefits_mcp :8010 + policy_mcp :8011
-make run-devops-copilot      # A2A :5020 + incident_mcp :8020 + k8s_mcp :8021 (dry_run)
+make run-sre-copilot      # A2A :5020 + incident_mcp :8020 + k8s_mcp :8021 (dry_run)
 make run-faq                 # A2A :5030 + faq_query_mcp :8030
 ```
 
@@ -214,7 +225,7 @@ AUTH_JWT_SECRET=<random-32-chars-min>
 | Plugin | 处理意图 | Manifest 名 |
 |--------|---------|------------|
 | hr_assistant | hr / benefits | `hr_assistant` (A2A :5010) |
-| devops_copilot | devops | `devops_copilot` (A2A :5020) |
+| sre_copilot | devops | `sre_copilot` (A2A :5020) |
 | faq | faq | `faq` (A2A :5030) |
 
 out_of_scope 走 LLM 直答兜底。

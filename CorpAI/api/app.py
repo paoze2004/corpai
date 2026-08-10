@@ -2,23 +2,23 @@
 需求：CorpAI FastAPI后端服务器，提供REST API接口
 """
 import json
+import logging
 import os
 import re
 import time
 
+import uvicorn
 from fastapi import FastAPI, Header, Response
-from fastapi.responses import FileResponse
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
-import uvicorn
 
 from CorpAI.api import admin_router as _admin
 from CorpAI.platform.observability.metrics import (
-    HTTP_REQUESTS,
     HTTP_REQUEST_DURATION,
+    HTTP_REQUESTS,
     endpoint_label,
 )
 from CorpAI.platform.observability.trace import (
@@ -27,6 +27,14 @@ from CorpAI.platform.observability.trace import (
     normalize_incoming_trace_id,
 )
 from CorpAI.platform.plugin_manager import discover_all
+from sre_copilot.feishu import (
+    handle_approve_callback,
+    handle_reject_callback,
+    verify_signature,
+)
+
+logger = logging.getLogger(__name__)
+from CorpAI.platform.sre.webhook import router as sre_webhook_router
 from CorpAI.platform.wiring import build_default_service
 
 
@@ -85,6 +93,169 @@ _static_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 _static_admin = os.path.join(_static_root, "admin")
 if os.path.isdir(_static_admin):
     app.mount("/admin", StaticFiles(directory=_static_admin, html=True), name="admin")
+
+# Phase SRE:Alertmanager webhook 入口 + 飞书 callback
+app.include_router(sre_webhook_router)
+
+
+# ─── 飞书事件订阅统一入口 ───
+# 飞书后台「事件与回调 → 回调配置」填这个 URL
+# 飞书会 POST 过来两种东西:
+#   1. URL 验证:{challenge: "xxx"} → 返 {"challenge": "xxx"} 让飞书确认 URL 归属
+#   2. 卡片点击:{type: "card_action_trigger", action: {value: {...}}, operator: {...}}
+#      → 调 handle_approve_callback / handle_reject_callback
+# 为什么走这个(而不是按钮 url 跳转):
+#   - 按钮 url 跳转要飞书服务器访问我们 callback,localhost 不可达
+#   - 事件订阅 POST 到 ngrok/公网 URL,可穿透 NAT
+# signature 校验(pass-through,真接时飞书会带 X-Lark-Signature header)
+
+from fastapi import Request
+
+
+@app.get("/feishu/event")
+async def feishu_event_verify(challenge: str = "") -> dict:
+    """飞书「订阅保存」时的 URL 验证(GET 探活)。
+
+    飞书会发 GET /feishu/event?challenge=xxx,期望返 {"challenge": "xxx"}。
+    不返合法 JSON → 飞书后台显示"返回数据不是合法的JSON格式",保存失败。
+    """
+    if challenge:
+        return {"challenge": challenge}
+    return {"code": 0, "msg": "ok"}
+
+
+@app.post("/feishu/event")
+async def feishu_event_handler(request: Request) -> dict:
+    """飞书事件订阅统一入口。
+
+    1) URL 验证(POST 也可能来):
+        body = {"challenge": "..."}
+        → 返 {"challenge": "..."}
+    2) 卡片回调 (card.action.trigger):
+        body = {
+          "type": "card_action_trigger",
+          "action": {
+            "value": {"plan_id": 1, "token": "...", "op": "approve"|"reject"}
+          },
+          "operator": {"open_id": "ou_xxx", "user_id": "..."}
+        }
+        → 调 ApprovalService
+    3) 其他事件 → 返 200 + code=0(飞书要求成功 ack)
+    """
+    raw = await request.body()
+    # 调试日志:看飞书实际发什么(完整 body,不截断)
+    logger.info(f"飞书 POST body 长度={len(raw)} 完整={raw!r}")
+    # signature 校验(如果 FEISHU_ENCRYPT_KEY 设了)
+    sig = request.headers.get("X-Lark-Signature", "")
+    ts = request.headers.get("X-Lark-Request-Timestamp", "")
+    nonce = request.headers.get("X-Lark-Request-Nonce", "")
+    if sig and not verify_signature(ts, nonce, raw.decode(), sig):
+        logger.warning("飞书 callback 签名校验失败")
+        return {"code": -1, "msg": "signature_invalid"}
+
+    try:
+        payload = json.loads(raw) if raw else {}
+    except json.JSONDecodeError as exc:
+        return {"code": -1, "msg": f"json_parse_failed:{exc}"}
+
+    # URL 验证(POST 形式,部分老版本飞书仍用)
+    if "challenge" in payload:
+        # 如果飞书带了 token,顺手校验(可选 — 没设 VERIFY_TOKEN 就跳过)
+        expected = os.getenv("FEISHU_VERIFY_TOKEN", "").strip()
+        presented = payload.get("token", "")
+        if expected and presented and presented != expected:
+            logger.warning(f"飞书 URL 验证 token 不匹配:{presented[:8]}... vs expected")
+            return {"code": -1, "msg": "verify_token_mismatch"}
+        return {"challenge": payload["challenge"]}
+
+    # 卡片按钮点击
+    # 飞书新版 schema v2: {schema:"2.0", header:{event_type:"card.action.trigger"}, event:{action:{value:{...}}, operator:{...}}}
+    # 飞书老版 schema v1: {type:"card_action_trigger", action:{value:{...}}, operator:{...}}(没 event 包裹)
+    # 两条路径都支持,根据 event_type / type 字段判断走哪条
+    event_type = payload.get("header", {}).get("event_type", "")
+    legacy_type = payload.get("type", "")
+    if event_type == "card.action.trigger" or legacy_type == "card_action_trigger":
+        # v2 走 payload.event.{action,operator};v1 走 payload.{action,operator}
+        if event_type == "card.action.trigger":
+            event = payload.get("event", {}) or {}
+            action = event.get("action", {}) or {}
+            operator = event.get("operator", {}) or {}
+        else:
+            action = payload.get("action", {}) or {}
+            operator = payload.get("operator", {}) or {}
+        value = action.get("value", {}) or {}
+        try:
+            plan_id = int(value.get("plan_id", 0))
+            token = str(value.get("token", ""))
+            op = str(value.get("op", "approve"))
+        except (TypeError, ValueError) as exc:
+            return {"code": -1, "msg": f"value_invalid:{exc}"}
+        if not (plan_id and token):
+            logger.warning(f"飞书 callback 缺 plan_id/token:{value}")
+            return {"code": -1, "msg": "missing_plan_id_or_token"}
+        actor = operator.get("open_id") or operator.get("user_id") or "feishu_user"
+        scopes = ["sre:approve"]
+        logger.info(
+            f"飞书卡片 callback op={op} plan_id={plan_id} actor={actor}",
+        )
+        if op == "reject":
+            result = handle_reject_callback(
+                plan_id=plan_id, token=token,
+                actor=actor, scopes=scopes,
+                reason="rejected_via_feishu",
+            )
+        else:
+            result = handle_approve_callback(
+                plan_id=plan_id, token=token,
+                actor=actor, scopes=scopes,
+            )
+        # 飞书 v1 schema 回调响应格式(原卡是 v1,响应也得 v1):
+        #   {"toast": {...}, "card": {完整新卡片 header+elements 直接平铺}}
+        # 平铺就是正确格式,不需要 {type:"raw", data:{...}} 嵌套(v2 才那样写)。
+        # 平铺 / 嵌套错配时飞书静默丢弃 card 字段(toast 照常弹),所以表象是
+        # "toast 弹了但卡片不变" — 这是经典坑。
+        ok = result.get("status") in ("approved", "rejected")
+        decision_emoji = "✅" if ok and op == "approve" else "❌" if ok else "⚠"
+        decision_text = (
+            f"已批准 by {actor}" if ok and op == "approve"
+            else f"已拒绝 by {actor}" if ok
+            else f"操作失败:{result.get('reason', 'unknown')}"
+        )
+        return {
+            "toast": {
+                "type": "success" if ok else "error",
+                "content": decision_text,
+            },
+            "card": {
+                # v1 schema 响应:header + elements 直接平铺
+                # config.update_multi 只需原卡开启(响应卡不用),但放着也无害
+                "header": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": f"{decision_emoji} SRE Incident 修复审批",
+                    },
+                    "template": "green" if ok and op == "approve" else "red" if ok else "orange",
+                },
+                "elements": [
+                    {"tag": "div", "text": {
+                        "tag": "lark_md",
+                        "content": f"**Plan ID**\n{plan_id}",
+                    }},
+                    {"tag": "hr"},
+                    {"tag": "div", "text": {
+                        "tag": "lark_md",
+                        "content": f"**{decision_text}**",
+                    }},
+                    {"tag": "note", "elements": [{
+                        "tag": "plain_text",
+                        "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
+                    }]},
+                ],
+            },
+        }
+
+    # 其它事件(用户消息等)— ack 不处理
+    return {"code": 0, "msg": "ignored"}
 
 # 全局服务实例
 chat_service = build_default_service(plugin_manager=discover_all())

@@ -43,12 +43,12 @@ HR_ASSISTANT_LLM_PROMPT = """您是企业 HR 助手 v3.0,只处理**写 MySQL �
 
 【跨插件 bridge 3 个】
 - cross_query_faq — HR 业务未命中时兜底调 faq mcp 补全(只用于常见 FAQ)
-- cross_check_devops — 资产申请前查 devops 工单是否重复
-- cross_notify_devops — 审批后查 devops oncall 联系方式(真人发通知)
+- cross_check_sre — 资产申请前查 SRE 工单是否重复
+- cross_notify_sre — 审批后查 SRE oncall 联系方式(真人发通知)
 
 【路由优先级】
 1. 先识别动词 — 用户要做某事 → 调操作类工具
-2. 资产申请 → 先调 cross_check_devops 去重
+2. 资产申请 → 先调 cross_check_sre 去重
 3. 业务未命中常见 FAQ → 调 cross_query_faq 兜底
 
 注意:本插件**不**回答通用 HR 政策/福利咨询(那是 faq plugin 的职责)。如用户问"年假怎么算"等政策类问题,直接调 cross_query_faq 兜底查询。

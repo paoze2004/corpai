@@ -16,19 +16,18 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # 平台复用
 from CorpAI.platform.db import DatabasePool
-from CorpAI.platform.observability.trace import current_trace_id, new_trace_id
 from CorpAI.platform.observability.metrics import HR_ACTION_TOTAL, HR_BRIDGE_ERRORS_TOTAL
+from CorpAI.platform.observability.trace import current_trace_id, new_trace_id
 
+# ────────────────── RBAC 校验(照搬 sre_copilot/tools.py:_check_sre_write)────────
 
-# ────────────────── RBAC 校验(照搬 devops_copilot/tools.py:_check_devops_write)────────
-
-def _check_scope(authorization: Optional[str], needed: str) -> dict:
+def _check_scope(authorization: str | None, needed: str) -> dict:
     """校验 Bearer JWT 含 needed scope。返回 claims dict。
 
     Raises:
@@ -38,13 +37,13 @@ def _check_scope(authorization: Optional[str], needed: str) -> dict:
         HR_ACTION_TOTAL.labels(action="auth", status="forbidden").inc()
         raise PermissionError(f"需要 Bearer token (scope={needed})")
     try:
-        from CorpAI.platform.auth.tokens import jwt_decode
         from CorpAI.platform.auth.dependencies import get_jwt_secret
         from CorpAI.platform.auth.scopes import has_scope
+        from CorpAI.platform.auth.tokens import jwt_decode
         claims = jwt_decode(authorization[len("Bearer "):], get_jwt_secret())
     except Exception as e:
         HR_ACTION_TOTAL.labels(action="auth", status="error").inc()
-        raise PermissionError(f"token 解析失败: {e}")
+        raise PermissionError(f"token 解析失败: {e}") from e
     if not claims:
         HR_ACTION_TOTAL.labels(action="auth", status="forbidden").inc()
         raise PermissionError("token 无效或已过期")
@@ -54,7 +53,7 @@ def _check_scope(authorization: Optional[str], needed: str) -> dict:
     return claims
 
 
-def _current_user(authorization: Optional[str]) -> str:
+def _current_user(authorization: str | None) -> str:
     """从 token 拿 user_id。"""
     claims = _check_scope(authorization, "chat:write")
     return claims.get("user_id", "")
@@ -188,7 +187,7 @@ def submit_reimbursement(
     amount: float,
     description: str,
     currency: str = "CNY",
-    invoice_url: Optional[str] = None,
+    invoice_url: str | None = None,
 ) -> str:
     """提交报销申请。"""
     action = "submit_reimbursement"
@@ -233,7 +232,7 @@ def apply_certificate(
     language: str = "zh",
     quantity: int = 1,
     deliver_method: str = "email",
-    delivery_addr: Optional[str] = None,
+    delivery_addr: str | None = None,
 ) -> str:
     """申请证明(在职/收入/离职/工作居住证)。"""
     action = "apply_certificate"
@@ -276,8 +275,8 @@ def request_asset(
     authorization: str,
     asset_type: str,
     reason: str,
-    sku: Optional[str] = None,
-    estimated_cost: Optional[float] = None,
+    sku: str | None = None,
+    estimated_cost: float | None = None,
 ) -> str:
     """申请资产(笔记本/显示器/键盘/耳机/手机/其他)。"""
     action = "request_asset"
@@ -318,9 +317,9 @@ def register_training(
     training_name: str,
     training_type: str,
     business_relevance: str,
-    provider: Optional[str] = None,
-    expected_cost: Optional[float] = None,
-    expected_date: Optional[str] = None,
+    provider: str | None = None,
+    expected_cost: float | None = None,
+    expected_date: str | None = None,
 ) -> str:
     """报名培训(外部/内部/认证)。"""
     action = "register_training"
@@ -362,7 +361,7 @@ def apply_regularization(
     probation_start: str,
     probation_end: str,
     achievements: str,
-    self_assessment: Optional[str] = None,
+    self_assessment: str | None = None,
 ) -> str:
     """申请转正。achievements 必填,self_assessment 可选。"""
     action = "apply_regularization"
@@ -403,7 +402,7 @@ def approve_request(
     request_id: str,
     target_type: str,
     action: str,
-    approval_note: Optional[str] = None,
+    approval_note: str | None = None,
 ) -> str:
     """审批通用接口。HR 视角(需 hr:write scope),能审批任意用户的 request。
 
@@ -463,8 +462,8 @@ def approve_request(
 
 def query_my_requests(
     authorization: str,
-    target_type: Optional[str] = None,
-    status: Optional[str] = None,
+    target_type: str | None = None,
+    status: str | None = None,
     limit: int = 10,
 ) -> str:
     """查"我的"申请(员工只能查自己的)。HR 视角查所有人需用权限路径(暂未实现)。"""
@@ -526,8 +525,17 @@ def query_my_requests(
 import requests
 
 _FAQ_URL = os.getenv("FAQ_URL", "http://localhost:8030")
-_DEVOPS_INCIDENT_URL = os.getenv("DEVOPS_INCIDENT_URL", "http://localhost:8020")
-_DEVOPS_K8S_URL = os.getenv("DEVOPS_K8S_URL", "http://localhost:8021")
+# v3.1 backward compat:同时读 SRE_* 新名 和 DEVOPS_* 旧名,后者优先(SRE_* 没配就用旧)
+_SRE_INCIDENT_URL = (
+    os.getenv("SRE_INCIDENT_URL")
+    or os.getenv("DEVOPS_INCIDENT_URL")
+    or "http://localhost:8020"
+)
+_SRE_K8S_URL = (
+    os.getenv("SRE_K8S_URL")
+    or os.getenv("DEVOPS_K8S_URL")
+    or "http://localhost:8021"
+)
 _BRIDGE_TIMEOUT = 2.0  # 秒,跨插件 bridge 严格控时
 
 
@@ -619,16 +627,16 @@ def cross_query_faq(authorization: str, query: str, top_k: int = 2) -> str:
         return _err(action, "error", str(e))
 
 
-def cross_check_devops(authorization: str, asset_type: str, reason: str) -> str:
-    """跨插件:请求资产前,先查 devops 工单看是否已有相关请求(去重)。
+def cross_check_sre(authorization: str, asset_type: str, reason: str) -> str:
+    """跨插件:请求资产前,先查 SRE 工单看是否已有相关请求(去重)。
 
     适用:request_asset 提交前,避免重复申请。
     v3.0:失败显式告诉用户 bridge 状态(不再 silent)。
     """
-    action = "cross_check_devops"
+    action = "cross_check_sre"
     try:
         _current_user(authorization)
-        result = _bridge_call("devops", _DEVOPS_INCIDENT_URL, "query_incident",
+        result = _bridge_call("sre", _SRE_INCIDENT_URL, "query_incident",
                               limit=5)
         if result.get("status") == "bridge_unavailable":
             # v3.0:告诉用户 bridge 失败,让用户决定是否继续
@@ -637,7 +645,7 @@ def cross_check_devops(authorization: str, asset_type: str, reason: str) -> str:
                 "bridge_status": "bridge_unavailable",
                 "kind": result.get("kind"),
                 "message": result.get("message"),
-            }, "devops bridge 失败,未做去重检查(继续 process request_asset 由用户决定)")
+            }, "SRE bridge 失败,未做去重检查(继续 process request_asset 由用户决定)")
         items = result.get("data", [])
         for it in items:
             title = it.get("title", "")
@@ -652,31 +660,31 @@ def cross_check_devops(authorization: str, asset_type: str, reason: str) -> str:
     except PermissionError as e:
         return _err(action, "forbidden", str(e))
     except Exception as e:
-        HR_BRIDGE_ERRORS_TOTAL.labels(target="devops", kind="error").inc()
+        HR_BRIDGE_ERRORS_TOTAL.labels(target="sre", kind="error").inc()
         return _err(action, "error", str(e))
 
 
-def cross_notify_devops(authorization: str, request_id: str, target_type: str) -> str:
-    """跨插件:HR 审批后,查 devops oncall 联系方式(返给真人去发通知)。
+def cross_notify_sre(authorization: str, request_id: str, target_type: str) -> str:
+    """跨插件:HR 审批后,查 SRE oncall 联系方式(返给真人去发通知)。
 
     本工具**不**真发通知 — 仅返 oncall 邮箱/电话,真人接管(IM/邮件)。
     """
-    action = "cross_notify_devops"
+    action = "cross_notify_sre"
     try:
         claims = _check_scope(authorization, "hr:write")
-        result = _bridge_call("devops", _DEVOPS_K8S_URL, "query_oncall",
+        result = _bridge_call("sre", _SRE_K8S_URL, "query_oncall",
                               team="platform")
         if result.get("status") == "bridge_unavailable":
             return _err(action, "bridge_unavailable",
-                       f"devops 不可达:{result.get('message')}")
+                       f"SRE 不可达:{result.get('message')}")
         return _ok(action, {
             "request_id": request_id,
             "target_type": target_type,
             "approver_id": claims.get("user_id"),
             "oncall": result.get("data", {}),
-        }, f"已查询 oncall,请真人发通知")
+        }, "已查询 oncall,请真人发通知")
     except PermissionError as e:
         return _err(action, "forbidden", str(e))
     except Exception as e:
-        HR_BRIDGE_ERRORS_TOTAL.labels(target="devops", kind="error").inc()
+        HR_BRIDGE_ERRORS_TOTAL.labels(target="sre", kind="error").inc()
         return _err(action, "error", str(e))

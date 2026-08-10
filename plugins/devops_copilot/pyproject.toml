@@ -1,9 +1,0 @@
-[project]
-name = "corpai-plugin-devops-copilot"
-version = "1.0.0"
-description = "CorpAI DevOps 副驾 plugin — 工单(INC-001~008) + On-call(4 团队) + Pod 重启"
-requires-python = ">=3.11"
-dependencies = []
-
-[project.entry-points."platform.plugins"]
-devops_copilot = "devops_copilot.plugin:register"

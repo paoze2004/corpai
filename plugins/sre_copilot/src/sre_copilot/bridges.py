@@ -1,4 +1,4 @@
-"""devops_copilot 跨插件 bridge 工具 v3.0 — 显式失败,绝不 silent-fail。
+"""sre_copilot 跨插件 bridge 工具 v3.0 — 显式失败,绝不 silent-fail。
 
 设计(v3.0 改造):
 - bridge 失败时显式返回 `{"status": "bridge_unavailable", "kind": "timeout|unreachable|http5xx|error", "message": "..."}`
@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Optional
 
 import requests
 

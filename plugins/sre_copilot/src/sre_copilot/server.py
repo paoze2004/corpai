@@ -1,5 +1,6 @@
-"""devops_copilot A2A Server v3.0 — 4 真工具 + 2 bridge,显式 not_configured。
+"""sre_copilot A2A Server v3.1 — 4 真工具 + 2 bridge,显式 not_configured。
 
+重组(v3.1):从 devops_copilot 改名;sre_copilot 包下。
 删掉所有 in-memory 玩具路由(query_incident 之前的 list_recent/list_open_p0 等,
 list_log_sources/search_logs/get_pipeline_stats 等),只留 4 真工具 + 2 bridge。
 """
@@ -8,15 +9,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
 
-from devops_copilot import tools as t
-from devops_copilot import bridges as b
-from devops_copilot.prompts import DEVOPS_LLM_PROMPT
 from langchain_openai import ChatOpenAI
-from python_a2a import A2AServer, AgentCard, AgentSkill, Task, TaskStatus, TaskState
+from python_a2a import A2AServer, AgentCard, AgentSkill, Task, TaskState, TaskStatus
 
 from CorpAI.config import Config
+from sre_copilot import bridges as b, tools as t
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +48,15 @@ def _extract_team(text: str) -> str:
     return "platform"
 
 
-class DevopsCopilotServer(A2AServer):
-    """v3.0 A2A:4 真工具 + 2 bridge,显式 not_configured。"""
+class SreCopilotServer(A2AServer):
+    """v3.1 A2A:4 真工具 + 2 bridge,显式 not_configured。"""
 
     def __init__(self, llm: ChatOpenAI | None = None):
         card = AgentCard(
-            name="devops_copilot",
-            description="DevOps 副驾 v3.0 — 4 真工具(Jira/PagerDuty/Prometheus/K8s)+ 2 桥接,无 in-memory 玩具",
+            name="sre_copilot",
+            description="SRE Copilot v3.1 — 4 真工具(Jira/PagerDuty/Prometheus/K8s)+ 2 桥接,无 in-memory 玩具",
             url="http://localhost:5020",
-            version="3.0.0",
+            version="3.1.0",
             skills=[
                 AgentSkill(id="query_incident", name="查工单", description="Jira REST API"),
                 AgentSkill(id="query_oncall", name="On-call 查询", description="PagerDuty API"),
@@ -87,7 +85,7 @@ class DevopsCopilotServer(A2AServer):
                 artifacts=[{"parts": [{"type": "text", "text": response}]}],
             )
         except Exception as exc:
-            logger.exception("devops_copilot handle_task failed")
+            logger.exception("sre_copilot handle_task failed")
             return Task(
                 id=task.id,
                 status=TaskStatus(state=TaskState.FAILED, message=task.message),
@@ -135,6 +133,6 @@ class DevopsCopilotServer(A2AServer):
 
         return json.dumps({
             "status": "no_match",
-            "message": ("暂不支持该查询。devops_copilot 处理:"
+            "message": ("暂不支持该查询。sre_copilot 处理:"
                        "工单(Jira)/ On-call(PagerDuty)/ 告警(Prometheus)/ Pod 日志(K8s)/ 跨插件桥接。"),
         }, ensure_ascii=False)

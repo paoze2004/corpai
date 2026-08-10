@@ -4,13 +4,12 @@
 保留 8 个写 MySQL 真业务的操作类工具 + 3 个跨插件 bridge。
 """
 from CorpAI.platform.plugin_manager import PluginManifest, PluginRegistry
-
 from hr_assistant.prompts import HR_ASSISTANT_LLM_PROMPT
 
 AGENT_MANIFEST = PluginManifest(
     name="hr_assistant",
     version="3.0.0",
-    description="HR 助手 v3.0(生产化):8 个操作类工具(请假/报销/证明/资产/培训/转正/审批/查询)+ 3 个跨插件 bridge(faq/devops)。无 KB 字典玩具。",
+    description="HR 助手 v3.0(生产化):8 个操作类工具(请假/报销/证明/资产/培训/转正/审批/查询)+ 3 个跨插件 bridge(faq/sre)。无 KB 字典玩具。",
     plugin_type="llm_agent",
     endpoint="http://localhost:5010",
     llm_prompt=HR_ASSISTANT_LLM_PROMPT,
@@ -125,26 +124,26 @@ BRIDGE_FAQ_TOOL = PluginManifest(
     tags=["bridge", "faq", "fallback", "mcp"],
 )
 
-BRIDGE_DEVOPS_TOOL = PluginManifest(
-    name="hr_assistant_bridge_devops_mcp",
-    version="3.0.0",
-    description="HR → DevOps:cross_check_devops(资产去重)+ cross_notify_devops(查 oncall)。失败显式告知 + Counter。需 hr:write。",
+BRIDGE_SRE_TOOL = PluginManifest(
+    name="hr_assistant_bridge_sre_mcp",
+    version="3.1.0",
+    description="HR → SRE:cross_check_sre(资产去重)+ cross_notify_sre(查 oncall)。失败显式告知 + Counter。需 hr:write。",
     plugin_type="mcp_tool",
     endpoint="http://localhost:8026",
-    mcp_tool_name="cross_check_devops",
+    mcp_tool_name="cross_check_sre",
     permissions=["hr:write"],
-    tags=["bridge", "devops", "incident", "oncall", "mcp"],
+    tags=["bridge", "sre", "incident", "oncall", "mcp"],
 )
 
 
 def register(registry: PluginRegistry) -> None:
-    """v3.0 注册 11 manifest:1 agent + 8 ops + 2 bridge(共 11 manifest,3 个 bridge 函数共用 2 manifest)。"""
+    """v3.1 注册 11 manifest:1 agent + 8 ops + 2 bridge(共 11 manifest,3 个 bridge 函数共用 2 manifest)。"""
     for m in (
         AGENT_MANIFEST,
         # 操作类(8)
         LEAVE_TOOL, REIM_TOOL, CERT_TOOL, ASSET_TOOL,
         TRAIN_TOOL, REG_TOOL, APPROVE_TOOL, MY_REQUESTS_TOOL,
         # 跨插件 bridge(2 — 3 个函数共用 1 个 manifest 路由)
-        BRIDGE_FAQ_TOOL, BRIDGE_DEVOPS_TOOL,
+        BRIDGE_FAQ_TOOL, BRIDGE_SRE_TOOL,
     ):
         registry.register(m)

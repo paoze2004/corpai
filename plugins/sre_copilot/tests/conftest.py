@@ -1,4 +1,4 @@
-"""devops_copilot conftest — 把项目根加到 sys.path。"""
+"""sre_copilot conftest — 把项目根加到 sys.path。"""
 import sys
 from pathlib import Path
 

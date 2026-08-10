@@ -33,12 +33,12 @@
 **保留 14 个真工具**(写 MySQL/Milvus/真 SDK):
 - **hr_assistant**:9 个操作类(写 MySQL `hr_leave_requests` 等 6 表)— 保留 `actions.py`
 - **faq**:1 个 RAG(接 Milvus + MiniMax embedding)— 保留
-- **devops_copilot**:4 个真工具(Phase 1 接 Jira / PagerDuty / Prometheus / kubernetes-python)— 删除 30 个 in-memory mock
-- 3 个跨插件 bridge:`cross_check_hr` / `cross_query_faq` / `cross_check_devops`
+- **sre_copilot**:4 个真工具(Phase 1 接 Jira / PagerDuty / Prometheus / kubernetes-python)— 删除 30 个 in-memory mock
+- 3 个跨插件 bridge:`cross_check_hr` / `cross_query_faq` / `cross_check_sre`
 
 **删除**:
 - `plugins/hr_assistant/src/hr_assistant/tools.py` 整个文件(7 个 KB 查询函数 + 82 条 dict)
-- `plugins/devops_copilot/src/devops_copilot/tools.py` 中的 28 个 in-memory 工具
+- `plugins/sre_copilot/src/sre_copilot/tools.py` 中的 28 个 in-memory 工具
 - hr 7 个 KB manifest / devops 7 个 toy manifest
 
 **理由**:一个工具不能接真库就是玩具,占 API 表面却不解决任何问题。
@@ -63,8 +63,8 @@
 **v3.0 行为**:`_bridge_call` 失败时返 `{"status": "bridge_unavailable", "kind": "timeout|unreachable|http5xx|json_decode|error", "message": "..."}`。调用方显式透传给用户。
 
 **改动文件**:
-- `plugins/hr_assistant/src/hr_assistant/actions.py` — `_bridge_call` + `cross_query_faq` / `cross_check_devops` / `cross_notify_devops`
-- `plugins/devops_copilot/src/devops_copilot/bridges.py` — 重写,`cross_check_hr` / `cross_query_faq`
+- `plugins/hr_assistant/src/hr_assistant/actions.py` — `_bridge_call` + `cross_query_faq` / `cross_check_sre` / `cross_notify_sre`
+- `plugins/sre_copilot/src/sre_copilot/bridges.py` — 重写,`cross_check_hr` / `cross_query_faq`
 
 **仍保留**:timeout 严格 2s / `HR_BRIDGE_ERRORS_TOTAL` Counter 累加。
 
@@ -80,7 +80,7 @@
 
 **只动**:
 - `plugins/hr_assistant/src/hr_assistant/{tools.py,prompts.py,server.py,plugin.py,tests/test_plugin.py}` — 删 7 KB + 改 prompt 提示
-- `plugins/devops_copilot/src/devops_copilot/{tools.py,prompts.py,server.py,plugin.py,bridges.py,tests/test_plugin.py}` — 重写为 4 真工具 + 改 bridge
+- `plugins/sre_copilot/src/sre_copilot/{tools.py,prompts.py,server.py,plugin.py,bridges.py,tests/test_plugin.py}` — 重写为 4 真工具 + 改 bridge
 
 **理由**:这是「做减法 + 真可用」的工程化,不是"推倒重来"。
 
@@ -94,7 +94,7 @@
 |------|------|
 | git tag `v0.0.0-pre-trim` | ✅ |
 | 删 `hr_assistant/tools.py`(7 KB 函数 + 82 dict) | ✅ |
-| 重写 `devops_copilot/tools.py`(4 真工具 stub) | ✅ |
+| 重写 `sre_copilot/tools.py`(4 真工具 stub) | ✅ |
 | 改 `bridges.py` silent-fail → 显式 | ✅ |
 | 删对应 manifest(7 hr + 7 devops) | ✅ |
 | 跑测试:152 平台 + 6 hr + 13 devops = **171 全过** | ✅ |
@@ -230,7 +230,7 @@ mysql -e "SELECT * FROM hr_audit_log ORDER BY id DESC LIMIT 3"
 | plugin | v2.x | v3.0 | Δ |
 |--------|------|------|---|
 | hr_assistant | 18(7 KB + 8 ops + 2 bridge + 1 agent) | 11(8 ops + 2 bridge + 1 agent) | -7 KB |
-| devops_copilot | 9(1 agent + 8 mcp) | 7(1 agent + 4 真工具 + 2 bridge) | -2 mcp toy |
+| sre_copilot | 9(1 agent + 8 mcp) | 7(1 agent + 4 真工具 + 2 bridge) | -2 mcp toy |
 | faq | 不动 | 不动 | 0 |
 | **总计** | 30 | 21 | **-9 toy** |
 
@@ -256,6 +256,6 @@ mysql -e "SELECT * FROM hr_audit_log ORDER BY id DESC LIMIT 3"
 ## ADR 历史交叉引用
 
 - `0010-phase4-observability.md` — Counter / trace_id / `/metrics` 已就位,本 ADR 复用其基础
-- `0005-rbac-model.md` — `hr:write` / `devops:read` / `devops:write` 4 个 scope,本 ADR 沿用
+- `0005-rbac-model.md` — `hr:write` / `sre:read` / `sre:write` 4 个 scope,本 ADR 沿用
 - `0004-orchestrator-module-split.md` — 平台 7 模块 ≤300 行,本 ADR 不改
 - `0001-platform-shape.md` — 平台 vs 业务分离,本 ADR 不改

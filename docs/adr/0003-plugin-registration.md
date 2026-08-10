@@ -29,7 +29,7 @@ Phase 3 实施位置:
 [project.entry-points."platform.plugins"]
 customer_service = "smartvoy_customer_service.plugin:register"
 hr_assistant = "smartvoy_hr_assistant.plugin:register"
-devops_copilot = "smartvoy_devops_copilot.plugin:register"
+sre_copilot = "smartvoy_sre_copilot.plugin:register"
 ```
 
 ### 2. 插件作者实现 `register()` 函数
@@ -129,4 +129,4 @@ class PluginManifest(BaseModel):
 
 - 当前硬编码:`CorpAI/core/chat.py:209-213`(`agent_urls` 字典)
 - 当前意图路由:`CorpAI/config.py:63-73`
-- 插件目录结构(目标):`plugins/{customer_service,hr_assistant,devops_copilot,faq}/`
+- 插件目录结构(目标):`plugins/{customer_service,hr_assistant,sre_copilot,faq}/`

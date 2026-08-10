@@ -65,7 +65,7 @@ uv pip install -e plugins/my_plugin
 from CorpAI.platform.plugin_manager import discover_all
 r = discover_all()
 print([m.name for m in r.list_all()])
-# 期望:['hr_assistant', 'devops_copilot', 'faq', 'my_plugin']
+# 期望:['hr_assistant', 'sre_copilot', 'faq', 'my_plugin']
 "
 ```
 
@@ -113,11 +113,11 @@ def register(registry: PluginRegistry) -> None:
 | 角色 | 期望 scope | 用例 |
 |------|------------|------|
 | super_admin | `["*"]` | 可调所有 plugin |
-| admin | `["hr:read", "devops:read", "faq:read"]` | 跨 plugin 读 |
+| admin | `["hr:read", "sre:read", "faq:read"]` | 跨 plugin 读 |
 | employee | `["chat:write"]` | 普通聊天(无 plugin 直接权限) |
 | agent_author | `["chat:write", "plugin:write"]` | 注册/管理 plugin |
 
-**devops_copilot 双 scope 示范**:`permissions: ["devops:read", "devops:write"]` — 同一 plugin 多个 scope。`restart_pod` 单独要 `devops:write`(由 plugin 内部 `has_scope` 校验)。
+**sre_copilot 双 scope 示范**:`permissions: ["sre:read", "sre:write"]` — 同一 plugin 多个 scope。`restart_pod` 单独要 `sre:write`(由 plugin 内部 `has_scope` 校验)。
 
 ## 6. summary_prompt dispatch 机制
 
@@ -194,7 +194,7 @@ Pydantic v2 `model_config = ConfigDict(extra="forbid")` — 任何拼错的字�
 - 不允许修改平台代码来适配 plugin;反过来平台升级也不能改 plugin。
 
 ### 9.4 插件测试 / 脚手架
-- 3 个真 plugin(`hr_assistant` / `devops_copilot` / `faq`)各自 `tests/test_plugin.py`,走 `unittest` + `pytest` 风格混用
+- 3 个真 plugin(`hr_assistant` / `sre_copilot` / `faq`)各自 `tests/test_plugin.py`,走 `unittest` + `pytest` 风格混用
 - entry_points 机制验证见 `docs/adr/0003-plugin-registration.md`;无需单独脚手架(写自己的 plugin 时照 §3-§6 模板即可)
 
 ### 9.5 性能 / trace / 监控?
@@ -242,7 +242,7 @@ Pydantic v2 `model_config = ConfigDict(extra="forbid")` — 任何拼错的字�
 | Plugin | A2A 端口 | MCP 端口 | 业务 | RBAC scopes |
 |--------|----------|----------|------|------------|
 | `hr_assistant` | 5010 | 8010-8026 (17 个 mcp) | **82 条 KB**(福利 18+ 政策 30+ 流程 12+ 招聘 6+ 薪酬 6+ 培训 6+ 关怀 4)+ **8 个操作类**(写 MySQL 真业务:请假/报销/证明/资产/培训/转正/审批/查询)+ **3 个跨插件 bridge**(faq 兜底 / devops 去重 / 查 oncall) | `hr:read, hr:write` |
-| `devops_copilot` | 5020 | 8020-8028 (8 个 mcp) | **35 工具**(incident 10+ oncall 8+ k8s 5+ 告警 6+ CI/CD 4+ 日志 4)+ **2 个跨插件 bridge**(hr 检查 / faq SOP 兜底) | `devops:read, devops:write` |
+| `sre_copilot` | 5020 | 8020-8028 (8 个 mcp) | **35 工具**(incident 10+ oncall 8+ k8s 5+ 告警 6+ CI/CD 4+ 日志 4)+ **2 个跨插件 bridge**(hr 检查 / faq SOP 兜底) | `sre:read, sre:write` |
 | `faq` | 5030 | 8030 | 企业 KB RAG(**71 条 Milvus faq_docs_v2**:IT/HR/Security/Finance/Procurement/Admin/Engineering 7 大业务域) | `faq:read` |
 
 ### 10.1 hr_assistant 操作类工具详解
@@ -269,9 +269,9 @@ Pydantic v2 `model_config = ConfigDict(extra="forbid")` — 任何拼错的字�
 ### 10.2 跨插件联动矩阵
 
 ```
-                    hr_assistant    devops_copilot    faq
+                    hr_assistant    sre_copilot    faq
 hr_assistant            -               ✓(bridge)     ✓(bridge)
-devops_copilot       ✓(bridge)            -           ✓(bridge)
+sre_copilot       ✓(bridge)            -           ✓(bridge)
 faq                     -             ✓(bridge)          -
 ```
 
@@ -279,10 +279,10 @@ bridge 工具通过 `requests.post({url}/mcp/tools/{tool_name}, timeout=2s)` 跨
 
 **典型场景**:
 1. **HR KB 未命中兜底**:`cross_query_faq` 调 faq 补全
-2. **资产申请去重**:`cross_check_devops` 查 devops 工单去重
+2. **资产申请去重**:`cross_check_sre` 查 devops 工单去重
 3. **请假触发 oncall 备份**:devops `cross_check_hr` 查 hr 申请
 4. **SOP 兜底**:devops 用户问故障 → `cross_query_faq` 查 SOP
-5. **审批后查 oncall**:`cross_notify_devops` 拿 oncall 联系方式
+5. **审批后查 oncall**:`cross_notify_sre` 拿 oncall 联系方式
 
 ### 10.3 关键 metrics
 
@@ -296,12 +296,12 @@ bridge 工具通过 `requests.post({url}/mcp/tools/{tool_name}, timeout=2s)` 跨
 | plugin | 单元测试 | e2e 集成 |
 |--------|---------|---------|
 | hr_assistant | 21 case | 6 case(`test_e2e.py`,需 MySQL,自动 skip if 不可用) |
-| devops_copilot | 20 case | — (Phase 6 接真 SDK 时加) |
+| sre_copilot | 20 case | — (Phase 6 接真 SDK 时加) |
 | 平台核心 | 152 case | 1 skipped |
 
 ```bash
 cd plugins/hr_assistant && pytest -v
-cd plugins/devops_copilot && pytest -v
+cd plugins/sre_copilot && pytest -v
 cd plugins/hr_assistant && pytest tests/test_e2e.py -v
 pytest tests/ -m "not integration"
 ```

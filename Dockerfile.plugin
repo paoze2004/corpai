@@ -1,0 +1,62 @@
+# CorpAI plugin server — 通用 plugin 镜像(三个 plugin 复用)
+#
+# 构建(hr_assistant 为例):
+#   docker build -f Dockerfile.plugin \
+#     --build-arg PLUGIN_NAME=hr_assistant \
+#     --build-arg PORT=5010 \
+#     -t corpai-hr-assistant:latest .
+#
+# 启动:
+#   docker run -p 5010:5010 --env-file .env corpai-hr-assistant:latest
+#
+# 设计:多阶段 + 非 root + 健康检查 + build-arg 复用 3 个 plugin
+
+ARG PLUGIN_NAME=hr_assistant
+ARG PORT=5010
+
+FROM python:3.11-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /app
+
+# 1. 平台核心依赖(plugins 都依赖 CorpAI 主项目)
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
+
+# 2. 装指定 plugin
+ARG PLUGIN_NAME
+COPY plugins/${PLUGIN_NAME}/pyproject.toml plugins/${PLUGIN_NAME}/uv.lock* /app/plugins/${PLUGIN_NAME}/
+
+# 3. 复制源码
+COPY CorpAI ./CorpAI
+COPY plugins/${PLUGIN_NAME}/src /app/plugins/${PLUGIN_NAME}/src
+
+RUN uv sync --frozen --no-dev
+
+# === runtime ===
+FROM python:3.11-slim AS runtime
+
+RUN groupadd --system --gid 1000 corpai && \
+    useradd --system --uid 1000 --gid corpai --no-create-home corpai
+
+WORKDIR /app
+
+ARG PLUGIN_NAME
+ARG PORT
+
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PLUGIN_NAME=${PLUGIN_NAME} \
+    PLUGIN_PORT=${PORT}
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health', timeout=2)"
+
+USER corpai
+
+EXPOSE ${PORT}
+
+# 用 python -m 跑 plugin 的入口模块(每个 plugin 都暴露 entry)
+CMD ["sh", "-c", "python -m ${PLUGIN_NAME}.entry --port ${PLUGIN_PORT}"]

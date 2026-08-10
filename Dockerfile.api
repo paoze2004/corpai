@@ -1,0 +1,62 @@
+# CorpAI API — FastAPI server (port 8080)
+#
+# 构建:docker build -f Dockerfile.api -t corpai-api:latest .
+# 启动:docker run -p 8080:8080 --env-file .env corpai-api:latest
+#
+# 设计:
+# - 多阶段:builder(装依赖)+ runtime(瘦身镜像)
+# - 用 uv 装包(快,锁文件精确)
+# - 非 root 用户运行(fail-safe)
+# - 健康检查:GET /health
+
+FROM python:3.11-slim AS builder
+# 装 uv(dependency manager)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /app
+
+# 1. 装平台核心依赖(platform 包 + runtime 依赖)
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
+
+# 2. 装 3 个 plugin(每个 plugin 一个 pyproject)
+COPY plugins/hr_assistant/pyproject.toml plugins/hr_assistant/uv.lock* /app/plugins/hr_assistant/
+COPY plugins/sre_copilot/pyproject.toml plugins/sre_copilot/uv.lock* /app/plugins/sre_copilot/
+COPY plugins/faq/pyproject.toml plugins/faq/uv.lock* /app/plugins/faq/
+
+# 3. 复制源码并 install 整个项目
+COPY CorpAI ./CorpAI
+COPY plugins/hr_assistant/src ./plugins/hr_assistant/src
+COPY plugins/sre_copilot/src ./plugins/sre_copilot/src
+COPY plugins/faq/src ./plugins/faq/src
+
+RUN uv sync --frozen --no-dev
+
+# === runtime 阶段 ===
+FROM python:3.11-slim AS runtime
+
+# 安全:非 root 运行
+RUN groupadd --system --gid 1000 corpai && \
+    useradd --system --uid 1000 --gid corpai --no-create-home corpai
+
+WORKDIR /app
+
+# 从 builder 复制 venv
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# SQL DDL 供初始化用
+COPY --chown=corpai:corpai sql/ /app/sql/
+
+# 健康检查 — 用 Python 自带 urllib,免装 curl
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"
+
+USER corpai
+
+EXPOSE 8080
+
+# 启动 uvicorn。入口 CorpAI.api.app:app 来自 api/app.py
+CMD ["uvicorn", "CorpAI.api.app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
