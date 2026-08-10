@@ -97,21 +97,15 @@ SERVICES: list[tuple[str, list[str], str]] = [
         "fastapi.log",
     ),
     (
-        "hr_assistant",
-        [str(PY), "-m", "hr_assistant.entry"],
-        "hr_assistant.log",
-    ),
-    (
         "sre_copilot",
         [str(PY), "-m", "sre_copilot.entry"],
         "sre_copilot.log",
     ),
-    (
-        "faq",
-        [str(PY), "-m", "faq.entry"],
-        "faq.log",
-    ),
 ]
+
+# hr_assistant / faq 不在 SERVICES — 当前阶段专注运维闭环,业务插件手动起:
+#   PYTHONIOENCODING=utf-8 PYTHONPATH=. uv run python -m hr_assistant.entry
+#   PYTHONIOENCODING=utf-8 PYTHONPATH=. uv run python -m faq.entry
 
 
 def _is_windows() -> bool:
