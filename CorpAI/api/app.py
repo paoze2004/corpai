@@ -180,13 +180,9 @@ async def feishu_event_handler(request: Request) -> dict:
     event_type = payload.get("header", {}).get("event_type", "")
     legacy_type = payload.get("type", "")
 
-    # v3.4:校验 header.token(防 callback 伪造 — 不校验别人能 POST 任意 plan_id+token 进来)
-    expected_verify = os.getenv("FEISHU_VERIFY_TOKEN", "").strip()
-    if expected_verify:
-        header_token = payload.get("header", {}).get("token", "") if event_type else payload.get("token", "")
-        if not header_token or header_token != expected_verify:
-            logger.warning(f"飞书 callback header.token 校验失败:presented={header_token[:8] if header_token else '(空)'}... vs expected={expected_verify[:8]}...")
-            return {"code": -1, "msg": "verify_token_mismatch"}
+    # v3.4.1:移除 header.token 校验 — 之前我把它和 FEISHU_VERIFY_TOKEN 混淆了
+    # 真正的安全凭证是 action.value.token(approval_token),由 ApprovalService 校验
+    # FEISHU_VERIFY_TOKEN 只用于 URL challenge 验证(下面那一段 GET challenge 处理)
 
     if event_type == "card.action.trigger" or legacy_type == "card_action_trigger":
         # v2 走 payload.event.{action,operator};v1 走 payload.{action,operator}
@@ -230,16 +226,12 @@ async def feishu_event_handler(request: Request) -> dict:
                 plan_id=plan_id, token=token,
                 actor=actor, scopes=scopes,
             )
-        # 飞书 v1 schema 回调响应格式(原卡是 v1,响应也得 v1):
-        #   {"toast": {...}, "card": {完整新卡片 header+elements 直接平铺}}
-        # 平铺就是正确格式,不需要 {type:"raw", data:{...}} 嵌套(v2 才那样写)。
-        # 平铺 / 嵌套错配时飞书静默丢弃 card 字段(toast 照常弹),所以表象是
-        # "toast 弹了但卡片不变" — 这是经典坑。
+        # 飞书 callback 响应 — v3.4.1 只返 toast,不返 card:
+        # - 卡片更新走 PATCH 路径(_patch_card_after_decision 在 handle_approve/reject 内部已做)
+        # - 飞书收到 callback 响应只需要 toast,返 card 反而触发 200672(原卡 v2,响应 v1 错配)
         status = result.get("status")
         # v3.2.5:"already_approved" / "already_decided" 也是正常状态(重发 callback)
         ok = status in ("approved", "rejected", "already_approved", "already_decided")
-        is_already = status in ("already_approved", "already_decided")
-        decision_emoji = "✅" if ok and op == "approve" else "❌" if ok else "⚠"
         decision_text = (
             f"已批准 by {actor}" if status == "approved" and op == "approve"
             else f"已拒绝 by {actor}" if status == "rejected"
@@ -251,32 +243,6 @@ async def feishu_event_handler(request: Request) -> dict:
             "toast": {
                 "type": "success" if ok else "error",
                 "content": decision_text,
-            },
-            "card": {
-                # v1 schema 响应:header + elements 直接平铺
-                # config.update_multi 只需原卡开启(响应卡不用),但放着也无害
-                "header": {
-                    "title": {
-                        "tag": "plain_text",
-                        "content": f"{decision_emoji} SRE Incident 修复审批",
-                    },
-                    "template": "green" if ok and op == "approve" else "red" if ok else "orange",
-                },
-                "elements": [
-                    {"tag": "div", "text": {
-                        "tag": "lark_md",
-                        "content": f"**Plan ID**\n{plan_id}",
-                    }},
-                    {"tag": "hr"},
-                    {"tag": "div", "text": {
-                        "tag": "lark_md",
-                        "content": f"**{decision_text}**",
-                    }},
-                    {"tag": "note", "elements": [{
-                        "tag": "plain_text",
-                        "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
-                    }]},
-                ],
             },
         }
 
