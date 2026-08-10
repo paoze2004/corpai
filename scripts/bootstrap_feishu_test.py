@@ -247,9 +247,30 @@ def main() -> int:
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
     if result.get("status") == "sent":
+        # v3.3:把 message_id 写真到 plan(供 callback 后 PATCH 卡片用)
+        msg_id = result.get("message_id", "")
+        if msg_id and plan_id and token != "dry_run_token_only":
+            try:
+                from CorpAI.platform.db import DatabasePool
+                pool = DatabasePool.get()
+                conn = pool.get_conn()
+                try:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "UPDATE sre_action_plans SET message_id=%s WHERE id=%s",
+                        (msg_id, plan_id),
+                    )
+                    conn.commit()
+                    cur.close()
+                finally:
+                    conn.close()
+                print(f"   message_id={msg_id} 已写入 plan_id={plan_id}")
+            except Exception as exc:
+                logger.warning(f"写真 message_id 失败(不影响发卡):{exc}")
         print()
         print("✅ 飞书卡片已发出 — 检查手机/PC 飞书是否收到。")
-        print("   点 ✅/❌ 按钮测试回调 → sre_action_plans 表 status 改变。")
+        print("   点 ✅/❌ 按钮测试回调 → sre_action_plans 表 status 改变,")
+        print("   飞书卡片按钮会被 PATCH 替换成锁定状态(不再可点)。")
         return 0
     print()
     print("❌ 发送失败 — 看上面 result['kind'] 排查")

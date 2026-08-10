@@ -331,6 +331,198 @@ def verify_signature(
 
 # ─── Callback 处理 ───
 
+def update_message_card(
+    message_id: str,
+    receive_id_type: str,
+    card: dict,
+) -> dict[str, Any]:
+    """PATCH 飞书卡片(审批后替换按钮用)。
+
+    飞书 v1 schema 卡片更新接口:
+      PUT https://open.feishu.cn/open-apis/im/v1/messages/{message_id}
+      body: {content: "<card JSON 字符串>"}
+
+    v3.3 新增 — 审批回调后用此接口把 [批准][拒绝] 按钮替换成"✅ 已批准 by ..."
+    之类的锁定状态。
+
+    Returns:
+      {status: "updated" | "error", kind, ...}
+    """
+    if not is_configured():
+        return {"status": "error", "kind": "not_configured"}
+    token = _get_tenant_access_token()
+    if not token:
+        return {"status": "error", "kind": "no_token"}
+    try:
+        content_str = json.dumps(card, ensure_ascii=False)
+        r = requests.put(
+            f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}",
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": "application/json"},
+            params={"receive_id_type": receive_id_type},
+            json={"content": content_str},
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        logger.error(f"飞书更新卡片网络失败:{exc}")
+        return {"status": "error", "kind": "unreachable"}
+    if r.status_code != 200:
+        logger.error(f"飞书更新卡片失败 {r.status_code}:{r.text}")
+        return {"status": "error", "kind": f"http{r.status_code}",
+                "body": r.text}
+    data = r.json()
+    if data.get("code", -1) != 0:
+        return {"status": "error", "kind": "api_error",
+                "code": data.get("code"), "msg": data.get("msg")}
+    return {"status": "updated",
+            "message_id": data.get("data", {}).get("message_id", message_id)}
+
+
+def build_approved_card(
+    incident_id: str,
+    service: str,
+    severity: str,
+    risk_level: str,
+    plan_summary: str,
+    decision_text: str,
+    decision_emoji: str,
+) -> dict[str, Any]:
+    """构造审批后状态卡(无按钮,锁定状态)。
+
+    跟 build_incident_card 共享字段,但 elements 是 note + 决策行,
+    没有 [批准][拒绝] 按钮。
+    """
+    severity_emoji = {
+        "critical": "🔴", "error": "🟠",
+        "warning": "🟡", "info": "🟢",
+    }.get(severity, "⚪")
+    risk_emoji = {
+        "low": "🟢", "medium": "🟡", "high": "🔴",
+    }.get(risk_level, "⚪")
+    return {
+        "config": {"update_multi": True},
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": f"{decision_emoji} SRE Incident 修复审批",
+            },
+            "template": "green",
+        },
+        "elements": [
+            {"tag": "div", "fields": [
+                {"is_short": True, "text": {
+                    "tag": "lark_md",
+                    "content": f"**Incident**\n{incident_id}",
+                }},
+                {"is_short": True, "text": {
+                    "tag": "lark_md",
+                    "content": f"**Service**\n{service}",
+                }},
+                {"is_short": True, "text": {
+                    "tag": "lark_md",
+                    "content": f"**Severity**\n{severity}",
+                }},
+                {"is_short": True, "text": {
+                    "tag": "lark_md",
+                    "content": f"**Risk**\n{risk_emoji} {risk_level}",
+                }},
+            ]},
+            {"tag": "hr"},
+            {"tag": "div", "text": {
+                "tag": "lark_md",
+                "content": f"**AI 建议方案**\n{plan_summary}",
+            }},
+            {"tag": "hr"},
+            {"tag": "div", "text": {
+                "tag": "lark_md",
+                "content": f"**{decision_text}**",
+            }},
+            {"tag": "note", "elements": [{
+                "tag": "plain_text",
+                "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
+            }]},
+        ],
+    }
+
+
+def _fetch_plan_for_card_update(plan_id: int) -> dict | None:
+    """从 DB 拉 plan 全字段(供 callback 后 PATCH 卡片用)。返 None = plan 不存在。"""
+    try:
+        from CorpAI.platform.db import DatabasePool
+        pool = DatabasePool.get()
+        conn = pool.get_conn()
+        try:
+            cur = conn.cursor(dictionary=True)
+            cur.execute(
+                "SELECT ap.id, ap.message_id, ap.plan_json, ap.risk_level, "
+                "  ap.status, ap.approved_by, ap.approved_at, "
+                "  i.incident_id, i.service, i.severity "
+                "FROM sre_action_plans ap "
+                "LEFT JOIN sre_incidents i ON ap.incident_id = i.incident_id "
+                "WHERE ap.id = %s",
+                (plan_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            # 从 plan_json 拿 AI 建议给卡片用
+            summary = ""
+            try:
+                import json as _json
+                pj = _json.loads(row.get("plan_json") or "{}")
+                if isinstance(pj.get("actions"), list) and pj["actions"]:
+                    summary = (
+                        f"执行 {len(pj['actions'])} 个动作:" +
+                        "; ".join(a.get("tool", "?") for a in pj["actions"])
+                    )
+                elif pj.get("summary"):
+                    summary = pj["summary"]
+            except Exception:
+                summary = "(plan 解析失败)"
+            return {
+                "plan_id": row["id"],
+                "message_id": row["message_id"],
+                "risk_level": row["risk_level"] or "medium",
+                "incident_id": row["incident_id"] or "?",
+                "service": row["service"] or "?",
+                "severity": row["severity"] or "info",
+                "plan_summary": summary,
+                "approved_by": row.get("approved_by") or "",
+                "approved_at": row.get("approved_at"),
+            }
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.error(f"拉 plan={plan_id} 失败:{exc}")
+        return None
+
+
+def _patch_card_after_decision(
+    plan_id: int, decision_emoji: str, decision_text: str,
+) -> None:
+    """approve / reject 成功后 PATCH 飞书卡片。失败只记 WARNING,不抛。"""
+    plan = _fetch_plan_for_card_update(plan_id)
+    if not plan or not plan.get("message_id"):
+        return  # 没有 message_id(老 plan / bootstrap 没写真)
+    new_card = build_approved_card(
+        incident_id=plan["incident_id"],
+        service=plan["service"],
+        severity=plan["severity"],
+        risk_level=plan["risk_level"],
+        plan_summary=plan["plan_summary"],
+        decision_text=decision_text,
+        decision_emoji=decision_emoji,
+    )
+    patch_result = update_message_card(
+        plan["message_id"], "chat_id", new_card,
+    )
+    if patch_result.get("status") != "updated":
+        logger.warning(
+            f"飞书卡片 PATCH 失败(plan_id={plan_id}, msg_id={plan['message_id']}):"
+            f"{patch_result}"
+        )
+
+
 def handle_approve_callback(
     plan_id: int, token: str, actor: str, scopes: list[str],
 ) -> dict[str, Any]:
@@ -343,6 +535,9 @@ def handle_approve_callback(
             plan_id=plan_id, token=token,
             actor=actor, scopes=scopes,
         )
+        # v3.3:成功后 PATCH 飞书卡片(按钮换成"✅ 已批准")
+        decision_text = f"✅ 已批准\n操作人:{actor}\n时间:{result.get('approved_at') or '刚刚'}"
+        _patch_card_after_decision(plan_id, "✅", decision_text)
         return {"status": "approved", "plan_id": plan_id, "result": result}
     except (AlreadyDecided,) as exc:
         # v3.2.5:重发 callback(plan 已批过/拒过)→ 不当错误,返 'already_approved'
@@ -361,6 +556,9 @@ def handle_reject_callback(
             plan_id=plan_id, token=token,
             actor=actor, scopes=scopes, reason=reason,
         )
+        # v3.3:成功后 PATCH 飞书卡片(按钮换成"❌ 已拒绝")
+        decision_text = f"❌ 已拒绝\n操作人:{actor}\n理由:{reason or '无'}"
+        _patch_card_after_decision(plan_id, "❌", decision_text)
         return {"status": "rejected", "plan_id": plan_id, "result": result}
     except AlreadyDecided as exc:
         logger.info(f"飞书 reject 重复(plan_id={plan_id}):{exc}")
