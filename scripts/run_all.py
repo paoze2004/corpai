@@ -198,7 +198,11 @@ def _spawn_visible_windows(
     # .bat 文件:每行一句,不用 && 链式
     bat_content = (
         "@echo off\r\n"
-        f'cd /D "{cwd}"\r\n'
+        f'cd /D "{cwd}"\r\n"
+        # v3.1.4 关键:强制 Python 不缓冲 stdout,tee 才能立刻刷 log 文件
+        # (否则 tee 走 block buffering,等 buffer 满或 pipe 关闭才 flush,
+        #  导致 _wait_healthy sleep 几秒后 log 还是空的 → 误报失败)
+        f'set "PYTHONUNBUFFERED=1"\r\n'
         f"{env_lines}\r\n"
         f'set "TEE={tee_abs}"\r\n'
         f'{cmdline} 2>&1 | "%TEE%" "{log_path}"\r\n'
