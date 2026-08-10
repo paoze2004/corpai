@@ -473,6 +473,40 @@ def update_message_card(
             "body":data,
         }
 
+    # v3.4.9:反向验证 PATCH 真的存了 — GET 消息回来看 content
+    # 飞书 PATCH API 返 200 updated 但客户端重拉显示原卡,
+    # 怀疑 PATCH 实际没写入。GET 验证能区分。
+    try:
+        verify_r = requests.get(
+            f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        verify_data = verify_r.json()
+        verify_items = (verify_data.get("data") or {}).get("items") or []
+        if verify_items:
+            stored = verify_items[0].get("body", {}).get("content") or "{}"
+            try:
+                parsed = json.loads(stored)
+                elements = (parsed.get("body") or {}).get("elements") or []
+                first_text = ""
+                for el in elements:
+                    if el.get("tag") == "div":
+                        first_text = (el.get("text") or {}).get("content", "")[:60]
+                        break
+                logger.info(
+                    f"[PATCH-VERIFY] msg={message_id} server-stored"
+                    f" schema={parsed.get('schema')!r}"
+                    f" first_div_text={first_text!r}"
+                )
+            except Exception as pe:
+                logger.warning(f"[PATCH-VERIFY] parse stored failed:{pe}")
+        else:
+            logger.warning(
+                f"[PATCH-VERIFY] GET 返空 items,verify_data={verify_data}"
+            )
+    except Exception as ve:
+        logger.warning(f"[PATCH-VERIFY] GET 失败:{ve}")
 
     return {
         "status":"updated",
