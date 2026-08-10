@@ -100,6 +100,44 @@ def _kill_by_port(port: int) -> None:
             )
 
 
+def _kill_by_name(process_name: str) -> int:
+    """按进程名 kill(Windows 用 taskkill /IM,POSIX 用 pkill)。
+
+    主要场景:ngrok.exe — 用户经常手动起 ngrok 占 subdomain,
+    stop_all 只杀 .pids + cmd 窗口,抓不到手动起的。
+    taskkill /IM ngrok.exe /F 会 kill 所有同名进程(慎用!只 kill CorpAI 自己的)。
+
+    Returns:杀掉的进程数。
+    """
+    if _is_windows():
+        with contextlib.suppress(Exception):
+            r = subprocess.run(
+                ["taskkill", "/IM", process_name, "/F"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if r.returncode == 0:
+                # 解析 'SUCCESS: The process "ngrok.exe" with PID 1234 has been terminated.'
+                killed = sum(
+                    1 for line in r.stdout.splitlines()
+                    if "SUCCESS:" in line and "terminated" in line
+                )
+                if killed > 0:
+                    print(f"  ✅ {killed} 个 {process_name} 已 kill(按名)")
+                return killed
+            # returncode 128 = 没找到进程
+            if "not found" in (r.stderr or "").lower():
+                return 0
+            return 0
+    else:
+        with contextlib.suppress(Exception):
+            r = subprocess.run(
+                ["pkill", "-9", "-x", process_name],
+                capture_output=True, timeout=10,
+            )
+            return 0 if r.returncode == 1 else 1  # pkill: 0=命中,1=无
+    return 0
+
+
 def _kill_orphan_cmd_windows() -> int:
     """清理 v3.1+ 弹的 cmd 窗口(标题 'CorpAI - <service>')。
 
@@ -169,6 +207,10 @@ def main() -> int:
     print("清理孤儿 cmd 窗口")
     orphans = _kill_orphan_cmd_windows()
     print(f"  清掉 {orphans} 个孤儿 cmd 窗口")
+    print()
+    print("兜底:按名杀 ngrok.exe(用户手动起的 ngrok 也清掉)")
+    killed_ngrok = _kill_by_name("ngrok.exe")
+    print(f"  清掉 {killed_ngrok} 个 ngrok.exe")
     return 0
 
 
