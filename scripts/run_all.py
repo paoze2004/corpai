@@ -150,38 +150,58 @@ def _spawn_detached(cmd: list[str], log_path: Path) -> subprocess.Popen:
         )
 
 
+def _find_tee() -> str | None:
+    """找 Git for Windows 的 tee.exe 绝对路径。
+
+    新 cmd 窗口(由 `start cmd /k` 起的)不一定继承父进程的 PATH,
+    所以 `tee` 找不到 — 要用绝对路径,或先把 Git bin 加进 PATH。
+
+    候选(按常见安装位置):
+      - D:\\Git\\usr\\bin\\tee.exe(user 的 Git Bash)
+      - C:\\Program Files\\Git\\usr\\bin\\tee.exe(默认安装)
+      - 已 git-sdk / scoop / chocolatey 装的可能路径
+
+    Returns:存在的绝对路径,或 None。
+    """
+    candidates = [
+        Path("D:/Git/usr/bin/tee.exe"),
+        Path("C:/Program Files/Git/usr/bin/tee.exe"),
+        Path("C:/Program Files (x86)/Git/usr/bin/tee.exe"),
+    ]
+    for p in candidates:
+        if p.exists():
+            return str(p)
+    return None
+
+
 def _spawn_visible_windows(
     name: str, cmd: list[str], log_path: Path,
 ) -> subprocess.Popen:
     """Windows 专属:弹可见 cmd 窗口,日志实时显示 + tee 落盘。
 
-    v3.1.1 修法 — 写临时 .bat 文件,`start cmd /k <bat>`:
-      - 之前用 `cmd /c "cd /D \"X\" && python ... | tee Y"` 这种 inner 字符串,
-        被 cmd /c 的 quoting bug 坑 — 含 `&|<>` 的命令外层引号被剥,
-        `cd /D` 路径解析失败("文件名、目录名或卷标语法不正确")。
-      - 改用临时 .bat 文件:@echo off 静默 + cd /D + set ENV + python | tee,
-        bat 文件由 cmd /k 逐行解析,没有 /c 那种引号破坏。
-      - bat 文件用 GBK 编码(Windows 中文 locale 要求)。
+    v3.1.2 修法 — bat 里 `where tee` 找不到时,用绝对路径调 Git 的 tee.exe:
+      - v3.1.1 假设新 cmd 窗口能从 PATH 找到 `tee`(因为父进程是 Git Bash)
+      - 实际 `start cmd /k` 起的 cmd 不一定继承父 PATH,`tee` 报"找不到"
+      - 解决:`_find_tee()` 探出 Git 的绝对路径,bat 里 `set TEE=...` 然后用 `%TEE%`
 
-    链路:
+    链路(其他同 v3.1.1):
       - cmd.exe /c start → 立即退出
       - start "CorpAI - <name>" cmd.exe /k <bat> → 弹可见 cmd 窗口跑 bat
-      - bat:cd /D CWD → set ENV → python -m xxx 2>&1 | tee log
-      - tee 来自 Git for Windows(全局 PATH 一般能找到)
-
-    关窗口 ↔ 杀进程树;stop_all 走 _kill_orphan_cmd_windows 兜底。
+      - bat:cd /D → set ENV... → set TEE=... → python 2>&1 | %TEE% log
     """
     cwd = str(PROJECT_ROOT)
     env_lines = "\n".join(
         f'set "{k}={v}"' for k, v in _common_env().items()
     )
     cmdline = subprocess.list2cmdline(cmd)
+    tee_abs = _find_tee() or "tee"  # 找不到就 fallback 到 PATH(赌一把)
     # .bat 文件:每行一句,不用 && 链式
     bat_content = (
         "@echo off\r\n"
         f'cd /D "{cwd}"\r\n'
         f"{env_lines}\r\n"
-        f'{cmdline} 2>&1 | tee "{log_path}"\r\n'
+        f'set "TEE={tee_abs}"\r\n'
+        f'{cmdline} 2>&1 | "%TEE%" "{log_path}"\r\n'
     )
     bat_path = LOGS_DIR / f"_spawn_{name}.bat"
     bat_path.write_text(bat_content, encoding="gbk")
