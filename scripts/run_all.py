@@ -155,30 +155,41 @@ def _spawn_visible_windows(
 ) -> subprocess.Popen:
     """Windows 专属:弹可见 cmd 窗口,日志实时显示 + tee 落盘。
 
-    `start "title" cmd /k "inner"` 链路:
-      - cmd.exe /c start → 启动并立即退出(Popen 拿到的是它的 pid,几乎立刻回收)
-      - 新 cmd.exe /k 窗口可见,跑 inner
-      - inner:`cd /D CWD && set ENV... && <cmd> 2>&1 | tee log`
-      - tee 来自 Git for Windows(D:\\Git\\usr\\bin\\tee.exe),全局 PATH 一般能找到
+    v3.1.1 修法 — 写临时 .bat 文件,`start cmd /k <bat>`:
+      - 之前用 `cmd /c "cd /D \"X\" && python ... | tee Y"` 这种 inner 字符串,
+        被 cmd /c 的 quoting bug 坑 — 含 `&|<>` 的命令外层引号被剥,
+        `cd /D` 路径解析失败("文件名、目录名或卷标语法不正确")。
+      - 改用临时 .bat 文件:@echo off 静默 + cd /D + set ENV + python | tee,
+        bat 文件由 cmd /k 逐行解析,没有 /c 那种引号破坏。
+      - bat 文件用 GBK 编码(Windows 中文 locale 要求)。
 
-    关窗口 ↔ 杀进程树;stop_all 走 orphan cmd 清理兜底。
+    链路:
+      - cmd.exe /c start → 立即退出
+      - start "CorpAI - <name>" cmd.exe /k <bat> → 弹可见 cmd 窗口跑 bat
+      - bat:cd /D CWD → set ENV → python -m xxx 2>&1 | tee log
+      - tee 来自 Git for Windows(全局 PATH 一般能找到)
 
-    env 注入:_spawn_detached 旧版本用 `env={**os.environ, **_common_env()}`,
-    弹 cmd 之后子进程会继承父进程环境,但新 cmd 窗口不会继承 Python dict,
-    这里改用 `set "KEY=value"` 命令注入(MYSQL_* / JWT_SECRET / REDIS_URL 等)。
+    关窗口 ↔ 杀进程树;stop_all 走 _kill_orphan_cmd_windows 兜底。
     """
-    # `subprocess.list2cmdline` 把 list 拼成 cmd.exe 风格的命令行(自动加引号)
-    cmdline = subprocess.list2cmdline(cmd)
-    # 用项目根做 CWD(原 _spawn_detached 的 cwd=str(PROJECT_ROOT))
     cwd = str(PROJECT_ROOT)
-    # 注入 _common_env() 到 cmd 窗口 — 子进程继承父 cmd 的环境
-    env_sets = " && ".join(
+    env_lines = "\n".join(
         f'set "{k}={v}"' for k, v in _common_env().items()
     )
-    inner = f'cd /D "{cwd}" && {env_sets} && {cmdline} 2>&1 | tee "{log_path}"'
-    # start 的第一个 "title" 是窗口标题,后面是 [cmd.exe /k <inner>]
+    cmdline = subprocess.list2cmdline(cmd)
+    # .bat 文件:每行一句,不用 && 链式
+    bat_content = (
+        "@echo off\r\n"
+        f'cd /D "{cwd}"\r\n'
+        f"{env_lines}\r\n"
+        f'{cmdline} 2>&1 | tee "{log_path}"\r\n'
+    )
+    bat_path = LOGS_DIR / f"_spawn_{name}.bat"
+    bat_path.write_text(bat_content, encoding="gbk")
+
+    # start "title" cmd.exe /k <bat_path>
     start_args = [
-        "cmd.exe", "/c", "start", f"CorpAI - {name}", "cmd.exe", "/k", inner,
+        "cmd.exe", "/c", "start", f"CorpAI - {name}",
+        "cmd.exe", "/k", str(bat_path),
     ]
     return subprocess.Popen(
         start_args,
@@ -336,6 +347,16 @@ def main() -> int:
     print(f"项目根:{PROJECT_ROOT}")
     print(f"日志:{LOGS_DIR}")
     print()
+
+    # 清理上一轮 _spawn_*.bat 残留(每个 service 一个,start 用完一般保留)
+    stale_bats = list(LOGS_DIR.glob("_spawn_*.bat"))
+    if stale_bats:
+        for b in stale_bats:
+            try:
+                b.unlink()
+            except OSError:
+                pass
+        print(f"清理 {len(stale_bats)} 个 stale _spawn_*.bat")
 
     # 加载 .env 到当前进程(子进程 env 才会继承)
     dotenv_path = PROJECT_ROOT / ".env"
