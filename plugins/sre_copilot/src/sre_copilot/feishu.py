@@ -340,13 +340,11 @@ def update_message_card(
 
     飞书 v1 schema 卡片更新接口:
       PUT https://open.feishu.cn/open-apis/im/v1/messages/{message_id}
-      body: {msg_type: "interactive", content: "<card JSON 字符串>"}
+      body: {content: "<card JSON 字符串>"}
+      **不能**带 msg_type — 飞书 PUT 校验会返 230001 "invalid msg_type"
+      (msg_type 由原消息隐含,不是更新参数)
 
-    v3.3 新增 — 审批回调后用此接口把 [批准][拒绝] 按钮替换成"✅ 已批准 by ..."
-    之类的锁定状态。
-
-    注意:必须带 msg_type='interactive',飞书 PUT 校验会返 99992402
-    "field validation failed: msg_type is required"。
+    v3.3.2 修法:移除 msg_type,只发 content。
 
     Returns:
       {status: "updated" | "error", kind, ...}
@@ -364,7 +362,6 @@ def update_message_card(
                      "Content-Type": "application/json"},
             params={"receive_id_type": receive_id_type},
             json={
-                "msg_type": "interactive",
                 "content": content_str,
             },
             timeout=10,
