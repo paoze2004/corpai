@@ -188,24 +188,45 @@ def build_incident_card(
             "body": {
                 "elements": [
                     {
-                        "tag": "div",
-                        "fields": [
-                            {"is_short": True, "text": {
-                                "tag": "lark_md",
-                                "content": f"**Incident**\n{incident_id}",
-                            }},
-                            {"is_short": True, "text": {
-                                "tag": "lark_md",
-                                "content": f"**Service**\n{service}",
-                            }},
-                            {"is_short": True, "text": {
-                                "tag": "lark_md",
-                                "content": f"**Severity**\n{severity}",
-                            }},
-                            {"is_short": True, "text": {
-                                "tag": "lark_md",
-                                "content": f"**Risk**\n{risk_emoji} {risk_level}",
-                            }},
+                        # v3.4.5:Card 2.0 多列布局统一用 column_set + column + div,
+                        # 不用 v1 的 div.fields 数组(可能 v2 解析报警)
+                        "tag": "column_set",
+                        "flex_mode": "stretch",
+                        "columns": [
+                            {
+                                "tag": "column", "width": "weighted",
+                                "elements": [{"tag": "div", "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**Incident**\n{incident_id}",
+                                }}],
+                            },
+                            {
+                                "tag": "column", "width": "weighted",
+                                "elements": [{"tag": "div", "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**Service**\n{service}",
+                                }}],
+                            },
+                        ],
+                    },
+                    {
+                        "tag": "column_set",
+                        "flex_mode": "stretch",
+                        "columns": [
+                            {
+                                "tag": "column", "width": "weighted",
+                                "elements": [{"tag": "div", "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**Severity**\n{severity}",
+                                }}],
+                            },
+                            {
+                                "tag": "column", "width": "weighted",
+                                "elements": [{"tag": "div", "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**Risk**\n{risk_emoji} {risk_level}",
+                                }}],
+                            },
                         ],
                     },
                     {"tag": "hr"},
