@@ -340,10 +340,13 @@ def update_message_card(
 
     飞书 v1 schema 卡片更新接口:
       PUT https://open.feishu.cn/open-apis/im/v1/messages/{message_id}
-      body: {content: "<card JSON 字符串>"}
+      body: {msg_type: "interactive", content: "<card JSON 字符串>"}
 
     v3.3 新增 — 审批回调后用此接口把 [批准][拒绝] 按钮替换成"✅ 已批准 by ..."
     之类的锁定状态。
+
+    注意:必须带 msg_type='interactive',飞书 PUT 校验会返 99992402
+    "field validation failed: msg_type is required"。
 
     Returns:
       {status: "updated" | "error", kind, ...}
@@ -360,7 +363,10 @@ def update_message_card(
             headers={"Authorization": f"Bearer {token}",
                      "Content-Type": "application/json"},
             params={"receive_id_type": receive_id_type},
-            json={"content": content_str},
+            json={
+                "msg_type": "interactive",
+                "content": content_str,
+            },
             timeout=10,
         )
     except requests.RequestException as exc:
