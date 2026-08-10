@@ -549,6 +549,7 @@ def build_approved_card(
         "low": "🟢", "medium": "🟡", "high": "🔴",
     }.get(risk_level, "⚪")
     return {
+        # v3.4.11:v1 飞书消息卡片格式 — 顶层平铺 elements,飞书 sandbox 验证通过
         "config": {"update_multi": True},
         "header": {
             "title": {
@@ -557,43 +558,40 @@ def build_approved_card(
             },
             "template": "green",
         },
-        "body": {
-            "elements": [
-                {"tag": "div", "fields": [
-                    {"is_short": True, "text": {
-                        "tag": "lark_md",
-                        "content": f"**Incident**\n{incident_id}",
-                    }},
-                    {"is_short": True, "text": {
-                        "tag": "lark_md",
-                        "content": f"**Service**\n{service}",
-                    }},
-                    {"is_short": True, "text": {
-                        "tag": "lark_md",
-                        "content": f"**Severity**\n{severity}",
-                    }},
-                    {"is_short": True, "text": {
-                        "tag": "lark_md",
-                        "content": f"**Risk**\n{risk_emoji} {risk_level}",
-                    }},
-                ]},
-                {"tag": "hr"},
-                {"tag": "div", "text": {
+        "elements": [
+            {"tag": "div", "fields": [
+                {"is_short": True, "text": {
                     "tag": "lark_md",
-                    "content": f"**AI 建议方案**\n{plan_summary}",
+                    "content": f"**Incident**\n{incident_id}",
                 }},
-                {"tag": "hr"},
-                {"tag": "div", "text": {
+                {"is_short": True, "text": {
                     "tag": "lark_md",
-                    "content": decision_text,
+                    "content": f"**Service**\n{service}",
                 }},
-                # v3.4.6:note tag 在 v2 schema 已废弃 → 改用 div + plain_text
-                {"tag": "div", "text": {
-                    "tag": "plain_text",
-                    "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
+                {"is_short": True, "text": {
+                    "tag": "lark_md",
+                    "content": f"**Severity**\n{severity}",
                 }},
-            ],
-        },
+                {"is_short": True, "text": {
+                    "tag": "lark_md",
+                    "content": f"**Risk**\n{risk_emoji} {risk_level}",
+                }},
+            ]},
+            {"tag": "hr"},
+            {"tag": "div", "text": {
+                "tag": "lark_md",
+                "content": f"**AI 建议方案**\n{plan_summary}",
+            }},
+            {"tag": "hr"},
+            {"tag": "div", "text": {
+                "tag": "lark_md",
+                "content": decision_text,
+            }},
+            {"tag": "div", "text": {
+                "tag": "plain_text",
+                "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
+            }},
+        ],
     }
 
 
