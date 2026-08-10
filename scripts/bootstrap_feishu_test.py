@@ -37,25 +37,18 @@ import os
 import sys
 from pathlib import Path
 
+# v3.2:统一从 CorpAI.utils.dotenv 加载 .env(单一配置源)
+# 顺便把项目根加进 sys.path(允许 `from CorpAI.xxx import yyy`)
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+# 也加 plugins/sre_copilot/src 让 sre_copilot.feishu 能 import(没装 pip 包时)
+sre_plugin_src = project_root / "plugins" / "sre_copilot" / "src"
+if sre_plugin_src.exists() and str(sre_plugin_src) not in sys.path:
+    sys.path.insert(0, str(sre_plugin_src))
+from CorpAI.utils.dotenv import load_env  # noqa: E402
 
-def _load_dotenv() -> None:
-    """手动读 .env(脚本可能被 cron / 单元测试环境跑,没自动加载)。
-
-    顺便把项目根加进 sys.path(允许 `from CorpAI.xxx import yyy`)—
-    避免 ModuleNotFoundError: No module named 'CorpAI'。
-    """
-    project_root = Path(__file__).resolve().parent.parent
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
-    env_path = project_root / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+load_env()
 
 
 def _check_config() -> tuple[bool, list[str]]:
@@ -150,7 +143,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    _load_dotenv()
+    # .env 在模块顶部已加载(load_env())。此处不再需要。
 
     print("=" * 60)
     print("Feishu Bootstrap Test")
