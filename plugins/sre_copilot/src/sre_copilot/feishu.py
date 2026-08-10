@@ -215,24 +215,49 @@ def build_incident_card(
                     }},
                     {"tag": "hr"},
                     {
-                        "tag": "action",
-                        "actions": [
-                            {"tag": "button", "text": {
-                                "tag": "plain_text", "content": "✅ 批准执行",
-                            }, "type": "primary",
-                               "value": {
-                                   "plan_id": plan_id,
-                                   "token": approval_token,
-                                   "op": "approve",
-                               }},
-                            {"tag": "button", "text": {
-                                "tag": "plain_text", "content": "❌ 拒绝",
-                            }, "type": "danger",
-                               "value": {
-                                   "plan_id": plan_id,
-                                   "token": approval_token,
-                                   "op": "reject",
-                               }},
+                        # v3.4.4:Card 2.0 不再用 action/actions/button 三层嵌套,
+                        # 改成 column_set + column + button 直挂(button 本身就是 element)
+                        "tag": "column_set",
+                        "flex_mode": "stretch",
+                        "columns": [
+                            {
+                                "tag": "column",
+                                "width": "weighted",
+                                "elements": [
+                                    {
+                                        "tag": "button",
+                                        "text": {
+                                            "tag": "plain_text",
+                                            "content": "✅ 批准执行",
+                                        },
+                                        "type": "primary",
+                                        "value": {
+                                            "plan_id": plan_id,
+                                            "token": approval_token,
+                                            "op": "approve",
+                                        },
+                                    },
+                                ],
+                            },
+                            {
+                                "tag": "column",
+                                "width": "weighted",
+                                "elements": [
+                                    {
+                                        "tag": "button",
+                                        "text": {
+                                            "tag": "plain_text",
+                                            "content": "❌ 拒绝",
+                                        },
+                                        "type": "danger",
+                                        "value": {
+                                            "plan_id": plan_id,
+                                            "token": approval_token,
+                                            "op": "reject",
+                                        },
+                                    },
+                                ],
+                            },
                         ],
                     },
                     {"tag": "note", "elements": [{
