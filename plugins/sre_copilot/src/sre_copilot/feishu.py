@@ -330,67 +330,94 @@ def verify_signature(
 
 
 # ─── Callback 处理 ───
-
 def update_message_card(
     message_id: str,
-    receive_id_type: str,
     card: dict,
 ) -> dict[str, Any]:
-    """PATCH 飞书卡片(审批后替换按钮用)。
-
-    飞书更新消息接口 body:
-      {
-        "msg_type": "interactive",   ← 必填
-        "content": "<card JSON 字符串>"  ← card 必须包成 v2 schema
-      }
-
-    v3.3.3 修法:
-      - msg_type 加回去(飞书要求,漏了就 99992402 "msg_type is required")
-      - card 内部包成 v2 schema:{"schema":"2.0","header":...,"body":{"elements":[...]}}
-      (飞书 PUT 校验 v2 schema,纯 v1 格式 content 会返 230001 "invalid msg_type")
-
-    Returns:
-      {status: "updated" | "error", kind, ...}
     """
-    if not is_configured():
-        return {"status": "error", "kind": "not_configured"}
+    更新飞书 interactive card
+    """
+
     token = _get_tenant_access_token()
+
     if not token:
-        return {"status": "error", "kind": "no_token"}
-    try:
-        # 把 build_approved_card 返的 v1 格式包成 v2 schema
-        v2_card = {
-            "schema": "2.0",
-            "header": card.get("header", {}),
-            "body": {
-                "elements": card.get("elements", []),
-            },
+        return {
+            "status": "error",
+            "kind": "no_token",
         }
-        content_str = json.dumps(v2_card, ensure_ascii=False)
-        r = requests.put(
+
+
+    try:
+
+        content_str = json.dumps(
+            card,
+            ensure_ascii=False,
+        )
+
+
+        payload = {
+            "content": content_str
+        }
+
+
+        logger.info(
+            "飞书 PATCH card payload=%s",
+            payload
+        )
+
+
+        r = requests.patch(
             f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}",
-            headers={"Authorization": f"Bearer {token}",
-                     "Content-Type": "application/json"},
-            params={"receive_id_type": receive_id_type},
-            json={
-                "msg_type": "interactive",
-                "content": content_str,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
             },
+            json=payload,
             timeout=10,
         )
+
+
     except requests.RequestException as exc:
-        logger.error(f"飞书更新卡片网络失败:{exc}")
-        return {"status": "error", "kind": "unreachable"}
+
+        logger.error(
+            f"飞书更新卡片网络失败:{exc}"
+        )
+
+        return {
+            "status":"error",
+            "kind":"network",
+        }
+
+
     if r.status_code != 200:
-        logger.error(f"飞书更新卡片失败 {r.status_code}:{r.text}")
-        return {"status": "error", "kind": f"http{r.status_code}",
-                "body": r.text}
-    data = r.json()
-    if data.get("code", -1) != 0:
-        return {"status": "error", "kind": "api_error",
-                "code": data.get("code"), "msg": data.get("msg")}
-    return {"status": "updated",
-            "message_id": data.get("data", {}).get("message_id", message_id)}
+
+        logger.error(
+            f"飞书更新卡片失败 {r.status_code}:{r.text}"
+        )
+
+        return {
+            "status":"error",
+            "kind":f"http{r.status_code}",
+            "body":r.text,
+        }
+
+
+    data=r.json()
+
+
+    if data.get("code",0)!=0:
+
+        return {
+            "status":"error",
+            "kind":"api_error",
+            "body":data,
+        }
+
+
+    return {
+        "status":"updated",
+        "message_id":message_id,
+    }
 
 
 def build_approved_card(
@@ -513,12 +540,17 @@ def _fetch_plan_for_card_update(plan_id: int) -> dict | None:
 
 
 def _patch_card_after_decision(
-    plan_id: int, decision_emoji: str, decision_text: str,
+    plan_id: int,
+    decision_emoji: str,
+    decision_text: str,
 ) -> None:
     """approve / reject 成功后 PATCH 飞书卡片。失败只记 WARNING,不抛。"""
+
     plan = _fetch_plan_for_card_update(plan_id)
+
     if not plan or not plan.get("message_id"):
         return  # 没有 message_id(老 plan / bootstrap 没写真)
+
     new_card = build_approved_card(
         incident_id=plan["incident_id"],
         service=plan["service"],
@@ -528,12 +560,17 @@ def _patch_card_after_decision(
         decision_text=decision_text,
         decision_emoji=decision_emoji,
     )
+
     patch_result = update_message_card(
-        plan["message_id"], "chat_id", new_card,
+        plan["message_id"],
+        new_card,
     )
+
     if patch_result.get("status") != "updated":
         logger.warning(
-            f"飞书卡片 PATCH 失败(plan_id={plan_id}, msg_id={plan['message_id']}):"
+            f"飞书卡片 PATCH 失败("
+            f"plan_id={plan_id}, "
+            f"msg_id={plan['message_id']}):"
             f"{patch_result}"
         )
 
