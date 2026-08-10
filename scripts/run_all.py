@@ -226,9 +226,37 @@ def _save_pid(name: str, pid: int) -> None:
 
 
 def _wait_healthy(proc: subprocess.Popen, log_path: Path, seconds: float = 5) -> bool:
-    """等几秒看进程是否真起;若立即退出返 False。"""
+    """等几秒看服务是否真起。
+
+    v3.1.3 修法:不再只靠 `proc.poll() is None`,3 种情况分开判:
+
+    A. helper 还在跑(None)→ 健康(旧式 background spawn,helper=服务)
+    B. helper 已退(常见:`cmd.exe /c start` 跑完就退,但新 cmd 窗口里服务还在跑)
+       → 看 log:有内容 + 没 ERROR/Traceback → 健康
+    C. helper 已退 + log 没内容或显式出错 → 失败
+
+    ngrok 这类 spawn 后立刻打印 ERROR 退出(`ERR_NGROK_334`)的 → 走 C,正确报失败。
+    """
     time.sleep(seconds)
-    return proc.poll() is None
+    if proc.poll() is None:
+        # A:helper 进程本身==服务进程(旧模式)
+        return True
+    # B / C:helper 已退。看 log 内容判断实际服务健康度
+    if not log_path.exists():
+        return False
+    try:
+        content = log_path.read_text(encoding="gbk", errors="ignore")
+    except OSError:
+        return False
+    if not content.strip():
+        return False
+    # 错误指示符 — 出现任一就判失败
+    error_markers = ("Traceback (most recent call last)", "ERROR:", "CRITICAL:",
+                     "ERR_NGROK_", "Error: ", "FATAL:", "command failed")
+    for marker in error_markers:
+        if marker in content:
+            return False
+    return True
 
 
 def _read_ngrok_url(log_path: Path, timeout: float = 12.0) -> str | None:
