@@ -109,9 +109,10 @@ def main() -> int:
         help="只打印卡片 JSON,不真发飞书(默认是真发)",
     )
     parser.add_argument(
-        "--create-plan", action="store_true",
-        help="在 DB 写真 plan,这样 approve 按钮回调能真生效",
+        "--no-create-plan", dest="create_plan", action="store_false",
+        help="**不写真 plan(只测发卡通道)** —— 默认写真,approve 按钮能真生效",
     )
+    parser.set_defaults(create_plan=True)
     parser.add_argument(
         "--receive-id", default=os.environ.get("FEISHU_TEST_RECEIVE_ID", ""),
         help="飞书 receive_id(open_id / chat_id / email)",
@@ -171,7 +172,7 @@ def main() -> int:
     token = "dry_run_token_only"
     if args.create_plan:
         if args.dry_run:
-            print("⚠ --create-plan 跟 --dry-run 一起用会写真 DB 但不发飞书,plan 没人收")
+            print("⚠ --no-create-plan 没加(默认写真)+ --dry-run 在:写真 DB 但不发飞书,plan 没人收")
         plan_json = json.dumps({
             "actions": [
                 {"tool": "restart_deployment", "args": {
