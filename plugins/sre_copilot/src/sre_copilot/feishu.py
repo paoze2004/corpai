@@ -281,13 +281,14 @@ def build_incident_card(
                             },
                         ],
                     },
-                    {"tag": "note", "elements": [{
+                    # v3.4.6:note tag 在 v2 schema 已废弃 → 改用 div + plain_text
+                    {"tag": "div", "text": {
                         "tag": "plain_text",
                         "content": (
                             "⏱ 30 分钟内未操作视为超时,Incident 将自动 escalated。"
                             "批准/拒绝前请确认 service 当前流量已切走。"
                         ),
-                    }]},
+                    }},
                 ],
             },
         },
@@ -534,10 +535,11 @@ def build_approved_card(
                     "tag": "lark_md",
                     "content": decision_text,
                 }},
-                {"tag": "note", "elements": [{
+                # v3.4.6:note tag 在 v2 schema 已废弃 → 改用 div + plain_text
+                {"tag": "div", "text": {
                     "tag": "plain_text",
                     "content": "卡片已锁定,不再可操作。如需重新审批,请发起新 plan。",
-                }]},
+                }},
             ],
         },
     }
