@@ -171,8 +171,10 @@ def build_incident_card(
     return {
         "msg_type": "interactive",
         "card": {
-            # 飞书 v2 schema — 卡片被 callback 更新必须显式开启
-            # config.update_multi: true(否则卡片无法被 PATCH/callback 响应更新)
+            # 飞书 v2 schema — schema 字段是飞书识别新版卡片的标记,
+            # 没有 schema 字段的卡 PATCH 更新可能静默失败。
+            # config.update_multi: true 让原卡可被多人同步更新。
+            "schema": "2.0",
             "config": {"update_multi": True},
             "header": {
                 "title": {
@@ -442,6 +444,8 @@ def build_approved_card(
         "low": "🟢", "medium": "🟡", "high": "🔴",
     }.get(risk_level, "⚪")
     return {
+        # v3.4.2:加 schema:"2.0" 让飞书识别 v2 卡片(否则 PATCH 静默失败)
+        "schema": "2.0",
         "config": {"update_multi": True},
         "header": {
             "title": {
@@ -607,6 +611,12 @@ def _patch_card_after_decision(
         plan_summary=plan["plan_summary"],
         decision_text=decision_text,
         decision_emoji=decision_emoji,
+    )
+    # v3.4.2 debug:确认卡片是 v2 schema(None = 飞书可能不更新)
+    logger.info(
+        f"[PATCH-3.5] card.schema={new_card.get('schema')!r}"
+        f" header_keys={list(new_card.get('header', {}).keys())}"
+        f" elements_count={len(new_card.get('elements', []))}"
     )
 
     patch_result = update_message_card(msg_id, new_card)
