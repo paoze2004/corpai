@@ -338,13 +338,16 @@ def update_message_card(
 ) -> dict[str, Any]:
     """PATCH 飞书卡片(审批后替换按钮用)。
 
-    飞书 v1 schema 卡片更新接口:
-      PUT https://open.feishu.cn/open-apis/im/v1/messages/{message_id}
-      body: {content: "<card JSON 字符串>"}
-      **不能**带 msg_type — 飞书 PUT 校验会返 230001 "invalid msg_type"
-      (msg_type 由原消息隐含,不是更新参数)
+    飞书更新消息接口 body:
+      {
+        "msg_type": "interactive",   ← 必填
+        "content": "<card JSON 字符串>"  ← card 必须包成 v2 schema
+      }
 
-    v3.3.2 修法:移除 msg_type,只发 content。
+    v3.3.3 修法:
+      - msg_type 加回去(飞书要求,漏了就 99992402 "msg_type is required")
+      - card 内部包成 v2 schema:{"schema":"2.0","header":...,"body":{"elements":[...]}}
+      (飞书 PUT 校验 v2 schema,纯 v1 格式 content 会返 230001 "invalid msg_type")
 
     Returns:
       {status: "updated" | "error", kind, ...}
@@ -355,13 +358,22 @@ def update_message_card(
     if not token:
         return {"status": "error", "kind": "no_token"}
     try:
-        content_str = json.dumps(card, ensure_ascii=False)
+        # 把 build_approved_card 返的 v1 格式包成 v2 schema
+        v2_card = {
+            "schema": "2.0",
+            "header": card.get("header", {}),
+            "body": {
+                "elements": card.get("elements", []),
+            },
+        }
+        content_str = json.dumps(v2_card, ensure_ascii=False)
         r = requests.put(
             f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}",
             headers={"Authorization": f"Bearer {token}",
                      "Content-Type": "application/json"},
             params={"receive_id_type": receive_id_type},
             json={
+                "msg_type": "interactive",
                 "content": content_str,
             },
             timeout=10,
