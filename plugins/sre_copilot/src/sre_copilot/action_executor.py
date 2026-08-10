@@ -163,6 +163,9 @@ class ActionExecutor:
             except asyncio.CancelledError:
                 logger.info("Executor 被取消,退出")
                 break
+            except TimeoutError:
+                # v3.2:Redis BLOCK 超时是预期,刷 INFO 即可(不打 stacktrace)
+                logger.info("consumer idle,等待下一个 plan...")
             except Exception as exc:
                 logger.exception(f"消费循环异常:{exc}")
                 await asyncio.sleep(2)  # 防雪崩
