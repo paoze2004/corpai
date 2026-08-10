@@ -15,6 +15,11 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from CorpAI.utils.dotenv import load_env
+
+# v3.2:加载 .env(单一配置源)
+load_env()
+
 from CorpAI.api import admin_router as _admin
 from CorpAI.platform.observability.metrics import (
     HTTP_REQUEST_DURATION,

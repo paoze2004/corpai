@@ -7,19 +7,27 @@ Phase 2 幂等迁移脚本。
 跑法:`uv run python scripts/migrate_add_user_id.py`(或 `make migrate-phase2`)
 """
 import logging
+import os
 import sys
+from pathlib import Path
 
 import mysql.connector
+
+# v3.2:加载 .env(.env 是单一配置源)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from CorpAI.utils.dotenv import load_env  # noqa: E402
+
+load_env()
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-# ──────────────────────── DB config(同 Config,但本地走默认值更直接)────────────────────────
-DB_HOST = "localhost"
-DB_USER = "root"
-DB_PASSWORD = "root"
-DB_NAME = "CorpAI"
+# ──────────────────────── DB config ────────────────────────
+DB_HOST = os.environ.get("MYSQL_HOST", "localhost")
+DB_USER = os.environ.get("MYSQL_USER", "admin")
+DB_PASSWORD = os.environ.get("MYSQL_PASSWORD", "admin123456")
+DB_NAME = os.environ.get("MYSQL_DATABASE", "CorpAI")
 
 
 # ──────────────────────── INFORMATION_SCHEMA 守卫 helpers ────────────────────────

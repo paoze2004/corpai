@@ -18,6 +18,11 @@ import logging
 import signal
 import sys
 
+from CorpAI.utils.dotenv import load_env
+
+# v3.2:加载 .env,REDIS_URL 等自动从 .env 读
+load_env()
+
 from sre_copilot.action_executor import ActionExecutor
 
 

@@ -7,6 +7,11 @@ import logging
 
 from python_a2a import run_server
 
+from CorpAI.utils.dotenv import load_env
+
+# v3.2:加载 .env(单一配置源)
+load_env()
+
 from faq.seed import seed_default_kb
 from faq.server import FaqServer
 

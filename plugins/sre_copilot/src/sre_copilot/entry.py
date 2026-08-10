@@ -7,6 +7,11 @@ import logging
 
 from python_a2a import run_server
 
+from CorpAI.utils.dotenv import load_env
+
+# v3.2:所有 entry 第一件事 = 加载 .env(.env 是单一配置源)
+load_env()
+
 from sre_copilot.server import SreCopilotServer
 
 logger = logging.getLogger(__name__)

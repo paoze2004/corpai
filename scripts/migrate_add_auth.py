@@ -8,18 +8,27 @@ Phase 3 幂等迁移脚本 — auth_ 4 张表 + 角色→scope 种子。
 """
 import logging
 import sys
+from pathlib import Path
 
 import mysql.connector
+
+# v3.2:加载 .env(.env 是单一配置源)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from CorpAI.utils.dotenv import load_env  # noqa: E402
+
+load_env()
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-# ──────────────────────── DB config(沿用 Phase 2 写法,本地走默认值)────────────────────────
-DB_HOST = "localhost"
-DB_USER = "root"
-DB_PASSWORD = "root"
-DB_NAME = "CorpAI"
+# ──────────────────────── DB config(本地默认走 .env 加载后的 os.environ)────────────────────────
+import os
+
+DB_HOST = os.environ.get("MYSQL_HOST", "localhost")
+DB_USER = os.environ.get("MYSQL_USER", "admin")
+DB_PASSWORD = os.environ.get("MYSQL_PASSWORD", "admin123456")
+DB_NAME = os.environ.get("MYSQL_DATABASE", "CorpAI")
 
 
 # ──────────────────────── INFORMATION_SCHEMA 守卫 helpers ────────────────────────
