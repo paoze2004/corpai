@@ -39,6 +39,7 @@ import requests
 
 from CorpAI.platform.sre.approval import (
     ApprovalService,
+    AlreadyDecided,
     InsufficientScope,
     PlanNotFound,
     TokenMismatch,
@@ -343,6 +344,10 @@ def handle_approve_callback(
             actor=actor, scopes=scopes,
         )
         return {"status": "approved", "plan_id": plan_id, "result": result}
+    except (AlreadyDecided,) as exc:
+        # v3.2.5:重发 callback(plan 已批过/拒过)→ 不当错误,返 'already_approved'
+        logger.info(f"飞书 approve 重复(plan_id={plan_id}):{exc}")
+        return {"status": "already_approved", "plan_id": plan_id, "reason": str(exc)}
     except (PlanNotFound, TokenMismatch, InsufficientScope) as exc:
         logger.warning(f"飞书 approve callback 拒绝:{exc}")
         return {"status": "rejected", "reason": str(exc)}
@@ -357,6 +362,9 @@ def handle_reject_callback(
             actor=actor, scopes=scopes, reason=reason,
         )
         return {"status": "rejected", "plan_id": plan_id, "result": result}
+    except AlreadyDecided as exc:
+        logger.info(f"飞书 reject 重复(plan_id={plan_id}):{exc}")
+        return {"status": "already_decided", "plan_id": plan_id, "reason": str(exc)}
     except (PlanNotFound, TokenMismatch, InsufficientScope) as exc:
         return {"status": "rejected", "reason": str(exc)}
 

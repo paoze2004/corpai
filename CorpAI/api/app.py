@@ -219,11 +219,16 @@ async def feishu_event_handler(request: Request) -> dict:
         # 平铺就是正确格式,不需要 {type:"raw", data:{...}} 嵌套(v2 才那样写)。
         # 平铺 / 嵌套错配时飞书静默丢弃 card 字段(toast 照常弹),所以表象是
         # "toast 弹了但卡片不变" — 这是经典坑。
-        ok = result.get("status") in ("approved", "rejected")
+        status = result.get("status")
+        # v3.2.5:"already_approved" / "already_decided" 也是正常状态(重发 callback)
+        ok = status in ("approved", "rejected", "already_approved", "already_decided")
+        is_already = status in ("already_approved", "already_decided")
         decision_emoji = "✅" if ok and op == "approve" else "❌" if ok else "⚠"
         decision_text = (
-            f"已批准 by {actor}" if ok and op == "approve"
-            else f"已拒绝 by {actor}" if ok
+            f"已批准 by {actor}" if status == "approved" and op == "approve"
+            else f"已拒绝 by {actor}" if status == "rejected"
+            else f"已批过了(刚才是重复点击):{actor}" if status == "already_approved"
+            else f"已拒过了(刚才是重复点击):{actor}" if status == "already_decided"
             else f"操作失败:{result.get('reason', 'unknown')}"
         )
         return {
