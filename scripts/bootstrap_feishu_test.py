@@ -37,6 +37,10 @@ import os
 import sys
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # v3.2:统一从 CorpAI.utils.dotenv 加载 .env(单一配置源)
 # 顺便把项目根加进 sys.path(允许 `from CorpAI.xxx import yyy`)
 project_root = Path(__file__).resolve().parent.parent
@@ -249,6 +253,7 @@ def main() -> int:
     if result.get("status") == "sent":
         # v3.3:把 message_id 写真到 plan(供 callback 后 PATCH 卡片用)
         msg_id = result.get("message_id", "")
+        logger.info(f"[BOOT-SAVE] send result status={result.get('status')} msg_id={msg_id!r} plan_id={plan_id}")
         if msg_id and plan_id and token != "dry_run_token_only":
             try:
                 from CorpAI.platform.db import DatabasePool
@@ -260,13 +265,22 @@ def main() -> int:
                         "UPDATE sre_action_plans SET message_id=%s WHERE id=%s",
                         (msg_id, plan_id),
                     )
+                    affected = cur.rowcount
                     conn.commit()
                     cur.close()
                 finally:
                     conn.close()
-                print(f"   message_id={msg_id} 已写入 plan_id={plan_id}")
+                logger.info(
+                    f"[BOOT-SAVE] UPDATE message_id={msg_id} WHERE id={plan_id}"
+                    f" → rowcount={affected}"
+                )
+                print(f"   message_id={msg_id} 已写入 plan_id={plan_id} (rowcount={affected})")
             except Exception as exc:
                 logger.warning(f"写真 message_id 失败(不影响发卡):{exc}")
+        else:
+            logger.warning(
+                f"[BOOT-SAVE] 跳过写真: msg_id={msg_id!r} plan_id={plan_id} token={token[:8]}"
+            )
         print()
         print("✅ 飞书卡片已发出 — 检查手机/PC 飞书是否收到。")
         print("   点 ✅/❌ 按钮测试回调 → sre_action_plans 表 status 改变,")

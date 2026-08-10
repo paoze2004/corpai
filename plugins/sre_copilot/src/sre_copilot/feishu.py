@@ -582,11 +582,22 @@ def _patch_card_after_decision(
     decision_text: str,
 ) -> None:
     """approve / reject 成功后 PATCH 飞书卡片。失败只记 WARNING,不抛。"""
+    logger.info(f"[PATCH-1] enter plan_id={plan_id} emoji={decision_emoji}")
 
     plan = _fetch_plan_for_card_update(plan_id)
 
-    if not plan or not plan.get("message_id"):
-        return  # 没有 message_id(老 plan / bootstrap 没写真)
+    if not plan:
+        logger.warning(f"[PATCH-2] plan 不存在 plan_id={plan_id}")
+        return
+    if not plan.get("message_id"):
+        logger.warning(
+            f"[PATCH-2] plan 没有 message_id — bootstrap 写真失败?"
+            f"plan_id={plan_id} msg_id={plan.get('message_id')!r}"
+        )
+        return
+
+    msg_id = plan["message_id"]
+    logger.info(f"[PATCH-3] start plan_id={plan_id} msg_id={msg_id}")
 
     new_card = build_approved_card(
         incident_id=plan["incident_id"],
@@ -598,16 +609,16 @@ def _patch_card_after_decision(
         decision_emoji=decision_emoji,
     )
 
-    patch_result = update_message_card(
-        plan["message_id"],
-        new_card,
+    patch_result = update_message_card(msg_id, new_card)
+
+    logger.info(
+        f"[PATCH-4] result plan_id={plan_id} status={patch_result.get('status')}"
+        f" body={str(patch_result)[:200]}"
     )
 
     if patch_result.get("status") != "updated":
         logger.warning(
-            f"飞书卡片 PATCH 失败("
-            f"plan_id={plan_id}, "
-            f"msg_id={plan['message_id']}):"
+            f"飞书卡片 PATCH 失败(plan_id={plan_id}, msg_id={msg_id}):"
             f"{patch_result}"
         )
 
