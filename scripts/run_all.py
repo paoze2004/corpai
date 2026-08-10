@@ -367,27 +367,27 @@ def _start_ngrok() -> str | None:
 
 
 def _start_sre_executor() -> int | None:
-    """起 SRE Executor(Redis Stream consumer)。"""
+    """起 SRE Executor(Redis Stream consumer)。
+
+    v3.1.5:之前有 2 个候选入口(`sre_copilot.executor_cli` + `scripts/run_sre_executor.py`),
+    后者 v3.1 已删除,留它导致 'FileNotFoundError' 触发第二个 '退出了' 日志,误导用户。
+    """
     log_path = LOGS_DIR / "sre_executor.log"
     print("[6/6] 起 sre_executor ...", end=" ", flush=True)
-    # v3.1:入口搬进 plugins/sre_copilot/src/sre_copilot/executor_cli.py
-    candidates = [
-        [str(PY), "-m", "sre_copilot.executor_cli",
-         "--redis-url", _common_env()["REDIS_URL"]],
-        [str(PY), "scripts/run_sre_executor.py",
-         "--redis-url", _common_env()["REDIS_URL"]],
+    # v3.1:入口在 plugins/sre_copilot/src/sre_copilot/executor_cli.py
+    cmd = [
+        str(PY), "-m", "sre_copilot.executor_cli",
+        "--redis-url", _common_env()["REDIS_URL"],
     ]
-    for cmd in candidates:
-        try:
-            proc = _spawn_detached(cmd, log_path)
-            _save_pid("sre_executor", proc.pid)
-            if _wait_healthy(proc, log_path, seconds=3):
-                print(f"✅ pid={proc.pid}")
-                return proc.pid
-            print("   退出了,试下一个入口 ...", end=" ", flush=True)
-        except FileNotFoundError:
-            continue
-    print("⏭ 入口都不存在,跳过")
+    try:
+        proc = _spawn_detached(cmd, log_path)
+        _save_pid("sre_executor", proc.pid)
+        if _wait_healthy(proc, log_path, seconds=3):
+            print(f"✅ pid={proc.pid}")
+            return proc.pid
+        print(f"❌ 立即退出,看 {log_path}(通常是 Redis 没起)")
+    except FileNotFoundError as exc:
+        print(f"❌ Python 找不到:{exc}")
     return None
 
 
