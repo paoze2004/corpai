@@ -483,6 +483,15 @@ def update_message_card(
             timeout=5,
         )
         verify_data = verify_r.json()
+        # 打印完整 response(前 500 字符) — 看清结构
+        logger.info(
+            f"[PATCH-VERIFY] msg={message_id}"
+            f" http_status={verify_r.status_code}"
+            f" code={verify_data.get('code')}"
+            f" msg={verify_data.get('msg')!r}"
+            f" data_keys={list((verify_data.get('data') or {}).keys())}"
+            f" full_data={json.dumps(verify_data, ensure_ascii=False)[:500]}"
+        )
         verify_items = (verify_data.get("data") or {}).get("items") or []
         if verify_items:
             stored = verify_items[0].get("body", {}).get("content") or "{}"
