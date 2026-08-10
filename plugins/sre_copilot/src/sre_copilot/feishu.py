@@ -333,6 +333,11 @@ def send_approval_card(
         # 飞书 API 要求 content 是 JSON 字符串(不是嵌套对象)
         # schema: {receive_id, msg_type, content: "<json string>"}
         content_str = json.dumps(card["card"], ensure_ascii=False)
+        # v3.4.7:debug — 实际发给飞书的卡片结构(检查有没有 v1 标签残留)
+        logger.info(
+            f"[SEND] card schema={card['card'].get('schema')!r}"
+            f" tags={[e.get('tag') for e in card['card'].get('body', {}).get('elements', [])]}"
+        )
         r = requests.post(
             "https://open.feishu.cn/open-apis/im/v1/messages",
             params={"receive_id_type": receive_id_type},
