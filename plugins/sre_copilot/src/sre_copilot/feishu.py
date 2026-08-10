@@ -176,7 +176,6 @@ def build_incident_card(
             # config.update_multi: true 让原卡可被多人同步更新。
             # v3.4.3:elements 必须包在 body 里(v2 schema 要求),
             # 不在顶层 — 否则飞书报 'parse card json err: unknown property elements'
-            "schema": "2.0",
             "config": {"update_multi": True},
             "header": {
                 "title": {
@@ -185,112 +184,117 @@ def build_incident_card(
                 },
                 "template": "red" if severity == "critical" else "orange",
             },
-            "body": {
-                "elements": [
-                    {
-                        # v3.4.5:Card 2.0 多列布局统一用 column_set + column + div,
-                        # 不用 v1 的 div.fields 数组(可能 v2 解析报警)
-                        "tag": "column_set",
-                        "flex_mode": "stretch",
-                        "columns": [
-                            {
-                                "tag": "column", "width": "weighted",
-                                "elements": [{"tag": "div", "text": {
-                                    "tag": "lark_md",
-                                    "content": f"**Incident**\n{incident_id}",
-                                }}],
-                            },
-                            {
-                                "tag": "column", "width": "weighted",
-                                "elements": [{"tag": "div", "text": {
-                                    "tag": "lark_md",
-                                    "content": f"**Service**\n{service}",
-                                }}],
-                            },
-                        ],
-                    },
-                    {
-                        "tag": "column_set",
-                        "flex_mode": "stretch",
-                        "columns": [
-                            {
-                                "tag": "column", "width": "weighted",
-                                "elements": [{"tag": "div", "text": {
-                                    "tag": "lark_md",
-                                    "content": f"**Severity**\n{severity}",
-                                }}],
-                            },
-                            {
-                                "tag": "column", "width": "weighted",
-                                "elements": [{"tag": "div", "text": {
-                                    "tag": "lark_md",
-                                    "content": f"**Risk**\n{risk_emoji} {risk_level}",
-                                }}],
-                            },
-                        ],
-                    },
-                    {"tag": "hr"},
-                    {"tag": "div", "text": {
-                        "tag": "lark_md",
-                        "content": f"**AI 建议方案**\n{plan_summary}",
-                    }},
-                    {"tag": "hr"},
-                    {
-                        # v3.4.4:Card 2.0 不再用 action/actions/button 三层嵌套,
-                        # 改成 column_set + column + button 直挂(button 本身就是 element)
-                        "tag": "column_set",
-                        "flex_mode": "stretch",
-                        "columns": [
-                            {
-                                "tag": "column",
-                                "width": "weighted",
-                                "elements": [
-                                    {
-                                        "tag": "button",
-                                        "text": {
-                                            "tag": "plain_text",
-                                            "content": "✅ 批准执行",
-                                        },
-                                        "type": "primary",
-                                        "value": {
-                                            "plan_id": plan_id,
-                                            "token": approval_token,
-                                            "op": "approve",
-                                        },
-                                    },
-                                ],
-                            },
-                            {
-                                "tag": "column",
-                                "width": "weighted",
-                                "elements": [
-                                    {
-                                        "tag": "button",
-                                        "text": {
-                                            "tag": "plain_text",
-                                            "content": "❌ 拒绝",
-                                        },
-                                        "type": "danger",
-                                        "value": {
-                                            "plan_id": plan_id,
-                                            "token": approval_token,
-                                            "op": "reject",
-                                        },
-                                    },
-                                ],
-                            },
-                        ],
-                    },
-                    # v3.4.6:note tag 在 v2 schema 已废弃 → 改用 div + plain_text
-                    {"tag": "div", "text": {
-                        "tag": "plain_text",
-                        "content": (
-                            "⏱ 30 分钟内未操作视为超时,Incident 将自动 escalated。"
-                            "批准/拒绝前请确认 service 当前流量已切走。"
-                        ),
-                    }},
-                ],
+            # v3.4.11:回退到 v1 飞书消息卡片格式 — GET 验证显示飞书 sandbox
+# 拒绝 v2 schema 的内容(降级成"请升级客户端" fallback),改成:
+#   {config, header, elements: [...]} 顶层平铺(无 body 包裹,无 schema 字段)
+"config": {"update_multi": True},
+            "header": {
+                "title": {
+                    "tag": "plain_text",
+                    "content": f"{severity_emoji} SRE Incident 修复审批",
+                },
+                "template": "red" if severity == "critical" else "orange",
             },
+            "elements": [
+                {
+                    # v3.4.11:用 column_set+column+div(原 v2 多列布局) — 这种 element 在 v1 也支持
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "columns": [
+                        {
+                            "tag": "column", "width": "weighted",
+                            "elements": [{"tag": "div", "text": {
+                                "tag": "lark_md",
+                                "content": f"**Incident**\n{incident_id}",
+                            }}],
+                        },
+                        {
+                            "tag": "column", "width": "weighted",
+                            "elements": [{"tag": "div", "text": {
+                                "tag": "lark_md",
+                                "content": f"**Service**\n{service}",
+                            }}],
+                        },
+                    ],
+                },
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "columns": [
+                        {
+                            "tag": "column", "width": "weighted",
+                            "elements": [{"tag": "div", "text": {
+                                "tag": "lark_md",
+                                "content": f"**Severity**\n{severity}",
+                            }}],
+                        },
+                        {
+                            "tag": "column", "width": "weighted",
+                            "elements": [{"tag": "div", "text": {
+                                "tag": "lark_md",
+                                "content": f"**Risk**\n{risk_emoji} {risk_level}",
+                            }}],
+                        },
+                    ],
+                },
+                {"tag": "hr"},
+                {"tag": "div", "text": {
+                    "tag": "lark_md",
+                    "content": f"**AI 建议方案**\n{plan_summary}",
+                }},
+                {"tag": "hr"},
+                {
+                    "tag": "column_set",
+                    "flex_mode": "stretch",
+                    "columns": [
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "✅ 批准执行",
+                                    },
+                                    "type": "primary",
+                                    "value": {
+                                        "plan_id": plan_id,
+                                        "token": approval_token,
+                                        "op": "approve",
+                                    },
+                                },
+                            ],
+                        },
+                        {
+                            "tag": "column",
+                            "width": "weighted",
+                            "elements": [
+                                {
+                                    "tag": "button",
+                                    "text": {
+                                        "tag": "plain_text",
+                                        "content": "❌ 拒绝",
+                                    },
+                                    "type": "danger",
+                                    "value": {
+                                        "plan_id": plan_id,
+                                        "token": approval_token,
+                                        "op": "reject",
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {"tag": "div", "text": {
+                    "tag": "plain_text",
+                    "content": (
+                        "⏱ 30 分钟内未操作视为超时,Incident 将自动 escalated。"
+                        "批准/拒绝前请确认 service 当前流量已切走。"
+                    ),
+                }},
+            ],
         },
     }
 
@@ -545,8 +549,6 @@ def build_approved_card(
         "low": "🟢", "medium": "🟡", "high": "🔴",
     }.get(risk_level, "⚪")
     return {
-        # v3.4.2:加 schema:"2.0" 让飞书识别 v2 卡片(否则 PATCH 静默失败)
-        "schema": "2.0",
         "config": {"update_multi": True},
         "header": {
             "title": {
