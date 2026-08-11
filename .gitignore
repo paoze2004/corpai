@@ -33,3 +33,6 @@ CLAUDE.md
 
 # Backup directories from destructive git operations
 .git.backup-*/
+
+# Project documentation (local-only, not published to public repo)
+docs/

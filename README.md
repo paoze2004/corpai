@@ -42,7 +42,7 @@
 | **sre_copilot** v3.1 | 工单/on-call/告警/K8s + 2 跨插件 bridge | `:5020` | 1 agent + 4 真工具 + 2 bridge = **7** |
 | **faq** v1.1 | 企业 KB 语义检索(Milvus) | `:5030` | 1 agent + 1 tool = **2** |
 
-详细清单见 [`docs/PLUGINS.md`](docs/PLUGINS.md)。
+详细清单见 plugin 各自的 README(`plugins/<name>/README.md`)。
 
 ### MCP 工具端口速查
 
@@ -94,12 +94,9 @@ CorpAI/                            ← 仓库根 (paoze2004/corpai)
 │   ├── auth/                      # JWT/RBAC/scope 测试
 │   ├── memory_pool/               # 6 层记忆测试
 │   └── observability/             # trace/metrics/call_record 测试
-├── docs/
-│   ├── REFACTOR_PLAN.md
-│   ├── PLUGINS.md
-│   └── adr/                       # 12 个 ADR(架构决策记录)
 ├── scripts/                       # 迁移 / 引导 / 启停
 ├── sql/                           # create_all_tables.sql + 迁移脚本
+├── docs/                          # (gitignored)项目本地文档,不入公开仓库
 ├── logs/                          # (gitignored)运行时日志
 ├── Dockerfile.api
 ├── Dockerfile.plugin
@@ -220,14 +217,6 @@ out_of_scope 走 LLM 直答兜底。
 | 5 | ✅ | 3 真 plugin(hr / sre / faq) |
 | 6 | ✅ | 硬化(.env + Pydantic + async + 真 SDK) |
 | 7 | ✅ | 收敛到企业 AI Copilot 形态 |
-
-详见 [`docs/REFACTOR_PLAN.md`](docs/REFACTOR_PLAN.md) 与 [`docs/adr/`](docs/adr/)(12 个 ADR)。
-
-## 文档
-
-- 平台架构 + 重构计划: [`docs/REFACTOR_PLAN.md`](docs/REFACTOR_PLAN.md)
-- Plugin 编写指南(v3.x): [`docs/PLUGINS.md`](docs/PLUGINS.md)
-- 架构决策记录: [`docs/adr/`](docs/adr/)
 
 ## License
 
