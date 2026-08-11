@@ -35,7 +35,7 @@ class FakeIntent:
         self._follow_up = follow_up
         self.calls = []
 
-    def extract(self, user_input):
+    async def extract(self, user_input):
         self.calls.append(user_input)
         return self._intents, self._user_queries, self._follow_up
 
@@ -52,7 +52,7 @@ class FakePlanner:
         self.skip_calls.append(intents)
         return self._should_skip
 
-    def plan(self, intents, user_queries):
+    async def plan(self, intents, user_queries):
         self.plan_calls.append((intents, user_queries))
         return self._plan
 
@@ -218,7 +218,7 @@ class TestChatExceptionHandling:
         from CorpAI.platform.orchestrator import OrchestratorService
 
         class RaisingIntent:
-            def extract(self, user_input):
+            async def extract(self, user_input):
                 raise json.JSONDecodeError("bad json", "x", 0)
 
         svc = OrchestratorService(
@@ -240,7 +240,7 @@ class TestChatExceptionHandling:
         from CorpAI.platform.orchestrator import OrchestratorService
 
         class RaisingIntent:
-            def extract(self, user_input):
+            async def extract(self, user_input):
                 raise RuntimeError("服务挂了")
 
         svc = OrchestratorService(
@@ -332,7 +332,7 @@ class TestChatStream:
         from CorpAI.platform.orchestrator import OrchestratorService
 
         class RaisingIntent:
-            def extract(self, user_input):
+            async def extract(self, user_input):
                 raise RuntimeError("流式异常")
 
         svc = OrchestratorService(

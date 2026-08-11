@@ -62,7 +62,7 @@ class TestRegister(unittest.TestCase):
         self.assertIn("hr_assistant_approve_mcp", names)
         self.assertIn("hr_assistant_my_mcp", names)
         self.assertIn("hr_assistant_bridge_faq_mcp", names)
-        self.assertIn("hr_assistant_bridge_devops_mcp", names)
+        self.assertIn("hr_assistant_bridge_sre_mcp", names)
 
     def test_register_agent_has_action_scope(self):
         r = PluginRegistry()

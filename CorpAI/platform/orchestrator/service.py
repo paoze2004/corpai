@@ -147,7 +147,7 @@ class OrchestratorService:
 
             try:
                 # 1. 意图识别
-                intents, user_queries, follow_up_message = self.intent.extract(user_input)
+                intents, user_queries, follow_up_message = await self.intent.extract(user_input)
                 span.set_attr("intents", intents)
 
                 # 2. 处理特殊情况
@@ -161,7 +161,7 @@ class OrchestratorService:
                         plan = {"need_plan": False, "reason": "启发式判断:任务简单,可直接执行", "steps": []}
                         logger.info(f"跳过规划: {plan['reason']}")
                     else:
-                        plan = self.planner.plan(intents, user_queries)
+                        plan = await self.planner.plan(intents, user_queries)
                     need_plan = plan.get("need_plan", False)
                     logger.info(f"规划结果: need_plan={need_plan}, reason={plan.get('reason', '')}")
 
@@ -209,7 +209,7 @@ class OrchestratorService:
 
         try:
             # 1. 意图识别(同步,无流式)
-            intents, user_queries, follow_up_message = self.intent.extract(user_input)
+            intents, user_queries, follow_up_message = await self.intent.extract(user_input)
 
             # 2. 特殊情况
             if "out_of_scope" in intents:
@@ -224,7 +224,7 @@ class OrchestratorService:
                     plan = {"need_plan": False, "reason": "启发式判断:任务简单,stream 路径", "steps": []}
                     logger.info(f"跳过规划(stream): {plan['reason']}")
                 else:
-                    plan = self.planner.plan(intents, user_queries)
+                    plan = await self.planner.plan(intents, user_queries)
                 need_plan = plan.get("need_plan", False)
                 logger.info(f"规划结果(stream): need_plan={need_plan}, reason={plan.get('reason', '')}")
 

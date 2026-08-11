@@ -120,10 +120,10 @@ class ReActRunner:
             ])
             messages = self.messages_provider()
             query = messages[-1]["content"] if messages else ""
-            final_response = summary_chain.invoke({
+            final_response = (await summary_chain.ainvoke({
                 "query": query,
                 "all_observations": all_obs
-            }).content.strip()
+            })).content.strip()
             final_response = strip_think(final_response)
         else:
             final_response = observations[0] if observations else "暂无结果"

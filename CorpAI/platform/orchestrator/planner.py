@@ -80,11 +80,12 @@ class TaskPlanner:
                 return False
         return True
 
-    def plan(self, intents: list[str], user_queries: dict[str, str]) -> dict:
+    async def plan(self, intents: list[str], user_queries: dict[str, str]) -> dict:
         """
         任务规划 — 调用 LLM 拆解步骤。
 
         完全等价于 ChatService.planning_agent(chat.py:484-520)。
+        修复:改为 async + ainvoke,避免在 async 上下文中同步阻塞事件循环。
 
         返回值:
             dict: 简单任务 → {"need_plan": false, "reason": "...", "steps": []}
@@ -93,12 +94,12 @@ class TaskPlanner:
         chain = self.prompt | self.llm
 
         messages = self.messages_provider()
-        planning_response = chain.invoke({
+        planning_response = (await chain.ainvoke({
             "conversation_history": self.memory.get_short_term_text(),
             "query": messages[-1]["content"] if messages else "",
             "intents": json.dumps(intents, ensure_ascii=False),
             "user_queries": json.dumps(user_queries, ensure_ascii=False)
-        }).content.strip()
+        })).content.strip()
         planning_response = strip_think(planning_response)
         logger.info(f"规划响应: {planning_response}")
 

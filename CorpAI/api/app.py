@@ -39,7 +39,14 @@ from sre_copilot.feishu import (
 )
 
 logger = logging.getLogger(__name__)
-from CorpAI.platform.sre.webhook import router as sre_webhook_router
+try:
+    # Phase SRE.a-h 的 webhook 路由;模块未到位时降级
+    from CorpAI.platform.sre.webhook import router as sre_webhook_router
+    _SRE_WEBHOOK_AVAILABLE = True
+except ImportError:
+    sre_webhook_router = None  # type: ignore[assignment]
+    _SRE_WEBHOOK_AVAILABLE = False
+    logger.warning("CorpAI.platform.sre.webhook 未加载,飞书 webhook 路由降级")
 from CorpAI.platform.wiring import build_default_service
 
 
@@ -92,6 +99,11 @@ app.add_middleware(TraceContextMiddleware)
 async def prometheus_metrics():
     return Response(generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
+# Phase 6:Dockerfile HEALTHCHECK 需要的存活探针
+@app.get("/health", include_in_schema=False)
+async def health_check():
+    return {"status": "ok"}
+
 # Phase 3:include admin router + mount /admin static + plugin_manager 注入到 build_default_service
 app.include_router(_admin.router)
 _static_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
@@ -100,7 +112,8 @@ if os.path.isdir(_static_admin):
     app.mount("/admin", StaticFiles(directory=_static_admin, html=True), name="admin")
 
 # Phase SRE:Alertmanager webhook 入口 + 飞书 callback
-app.include_router(sre_webhook_router)
+if _SRE_WEBHOOK_AVAILABLE and sre_webhook_router is not None:
+    app.include_router(sre_webhook_router)
 
 
 # ─── 飞书事件订阅统一入口 ───
@@ -150,13 +163,21 @@ async def feishu_event_handler(request: Request) -> dict:
     raw = await request.body()
     # 调试日志:看飞书实际发什么(完整 body,不截断)
     logger.info(f"飞书 POST body 长度={len(raw)} 完整={raw!r}")
-    # signature 校验(如果 FEISHU_ENCRYPT_KEY 设了)
+    # signature 校验(如果 FEISHU_ENCRYPT_KEY 设了,签名头必须存在且匹配)
     sig = request.headers.get("X-Lark-Signature", "")
     ts = request.headers.get("X-Lark-Request-Timestamp", "")
     nonce = request.headers.get("X-Lark-Request-Nonce", "")
-    if sig and not verify_signature(ts, nonce, raw.decode(), sig):
-        logger.warning("飞书 callback 签名校验失败")
-        return {"code": -1, "msg": "signature_invalid"}
+    _feishu_key = os.getenv("FEISHU_ENCRYPT_KEY", "").strip()
+    if _feishu_key:
+        # 生产模式:密钥已配置,签名必须存在且校验通过
+        if not sig:
+            logger.warning("飞书 callback 缺少 X-Lark-Signature 签名头,拒绝请求")
+            return {"code": -1, "msg": "missing_signature"}
+        if not verify_signature(ts, nonce, raw.decode(), sig):
+            logger.warning("飞书 callback 签名校验失败")
+            return {"code": -1, "msg": "signature_invalid"}
+    else:
+        logger.warning("FEISHU_ENCRYPT_KEY 未配置,跳过签名校验(仅限开发环境,生产必须配置)")
 
     try:
         payload = json.loads(raw) if raw else {}
@@ -278,7 +299,11 @@ async def chat(
     request: ChatRequest,
     authorization: str | None = Header(None),
 ):
-    """发送消息,获取回复。Phase 5:可选 JWT,带 scope 时 wiring 校验 RBAC。"""
+    """发送消息,获取回复。Phase 5:可选 JWT,带 scope 时 wiring 校验 RBAC。
+
+    安全修复:未携带 JWT 时,默认授予空 scopes(而非 super_admin)。
+    开发环境可通过 DEV_NO_AUTH=1 恢复全权限。
+    """
     if authorization and authorization.startswith("Bearer "):
         try:
             from CorpAI.platform.auth.dependencies import get_jwt_secret
@@ -289,6 +314,17 @@ async def chat(
             claims = None
         if claims:
             set_user_scopes(claims.get("scopes", []))
+        else:
+            # JWT 解析失败 → 不授予权限
+            set_user_scopes([])
+    elif os.getenv("DEV_NO_AUTH", "").strip() == "1":
+        # 开发环境显式开启无认证模式(仅限本地开发,不可用于生产)
+        from CorpAI.platform.wiring import set_user_scopes
+        set_user_scopes(["*"])
+    else:
+        # 未携带 JWT 且非开发模式 → 空权限
+        from CorpAI.platform.wiring import set_user_scopes
+        set_user_scopes([])
     response = await chat_service.chat(request.message)
     return {"status": "success", "message": _strip_think_blocks(response)}
 

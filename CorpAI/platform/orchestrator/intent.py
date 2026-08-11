@@ -45,11 +45,12 @@ class IntentRecognizer:
         self.memory = memory
         self.prompt = prompt if prompt is not None else CorpAIPrompts.intent_prompt()
 
-    def extract(self, user_input: str) -> tuple[list[str], dict[str, str], str]:
+    async def extract(self, user_input: str) -> tuple[list[str], dict[str, str], str]:
         """
         意图识别 — 输入用户查询,输出 (intents, user_queries, follow_up_message)。
 
         完全等价于 ChatService.intent_agent(chat.py:378-447)。
+        修复:改为 async + ainvoke,避免在 async 上下文中同步阻塞事件循环。
         """
         # 组装 Prompt 模板 + 大模型
         chain = self.prompt | self.llm
@@ -57,14 +58,14 @@ class IntentRecognizer:
         # 获取当前日期(Asia/Shanghai 时区)
         current_date = datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d')
 
-        # 调用大模型
-        intent_response = chain.invoke({
+        # 调用大模型(使用 ainvoke 避免阻塞事件循环)
+        intent_response = (await chain.ainvoke({
             "conversation_history": self.memory.get_short_term_text(),
             "query": user_input,
             "current_date": current_date,
             "user_profile": self.memory.get_profile_text(),
             "task_context": json.dumps(self.memory.current_task, ensure_ascii=False)
-        }).content.strip()
+        })).content.strip()
 
         intent_response = strip_think(intent_response)
         logger.info(f"意图识别原始响应: {intent_response}")

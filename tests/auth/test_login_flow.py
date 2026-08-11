@@ -35,11 +35,12 @@ class TestLoginFlow(unittest.TestCase):
             self.skipTest("DatabasePool unavailable")
 
     def test_login_wrong_password_returns_401(self):
-        r = self.client.post("/admin/api/login?username=nobody&password=wrong")
+        # 凭据走 Body(不再用 Query,避免进 URL/日志/代理缓存)
+        r = self.client.post("/admin/api/login", json={"username": "nobody", "password": "wrong"})
         self.assertEqual(r.status_code, 401)
 
     def test_login_missing_credentials_returns_422_or_401(self):
-        # FastAPI 422 for missing query params(Query())
+        # FastAPI 422 for missing body params(Body())
         r = self.client.post("/admin/api/login")
         self.assertIn(r.status_code, (401, 422))
 

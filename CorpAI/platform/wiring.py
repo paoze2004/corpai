@@ -8,13 +8,12 @@ Composition Root — Phase 1.7 把 ChatService.__init__ 接线逻辑搬到此处
 行为契约:与原 ChatService() 构造等价 — 同样的 A2A URL、ChatOpenAI 参数、
 memory limit、DB 加载顺序;公开方法与 ChatService 一一对应。
 """
-import asyncio
+import contextvars
 import json
 import uuid
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable
 
 import mysql.connector
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from python_a2a import AgentNetwork, Message, MessageRole, Task, TextContent
 from python_a2a.client import A2AClient
@@ -29,15 +28,13 @@ from CorpAI.platform.observability.metrics import (
     LLM_CALL_DURATION,
     LLM_CALL_TOTAL,
 )
-from CorpAI.platform.observability.trace import start_span, to_thread_propagating
-from CorpAI.platform.plugin_manager import PluginRegistry
+from CorpAI.platform.observability.trace import start_span
 from CorpAI.platform.orchestrator import OrchestratorService
 from CorpAI.platform.orchestrator.intent import IntentRecognizer
 from CorpAI.platform.orchestrator.planner import TaskPlanner
 from CorpAI.platform.orchestrator.react_loop import ReActRunner
+from CorpAI.platform.plugin_manager import PluginRegistry
 from CorpAI.utils.format import strip_think
-import contextvars
-
 
 # ════════════════════════════════════════════════════════════════
 # Phase 5:thread-local user scopes + summary prompt dispatch
@@ -53,8 +50,13 @@ def set_user_scopes(scopes: list[str]) -> None:
 
 
 def _get_current_user_scopes() -> list[str]:
-    """wiring 内部 helper — 缺省返 ['*'](向后兼容 Phase 1.7/2/3/4 无 token)。"""
-    return _user_scopes_var.get() or ["*"]
+    """wiring 内部 helper — 无 token 时返空列表(fail-closed,拒绝所有权限)。
+
+    安全修复:原实现返回 ["*"](super_admin),导致未认证请求完全绕过 RBAC。
+    现改为返回空列表,未认证请求不获得任何权限。
+    若需要向后兼容无 token 的开发环境,请在 api/app.py 中显式注入默认 scopes。
+    """
+    return _user_scopes_var.get() or []
 
 
 def _resolve_summary_prompt(plugin_manager: PluginRegistry | None, manifest, name: str):
@@ -157,7 +159,7 @@ def _load_memory_from_db(memory: ConversationMemory, conf: Config) -> None:
 
 
 def _make_agent_card_provider(
-    agent_network: AgentNetwork, agent_urls: dict[str, str],
+        agent_network: AgentNetwork, agent_urls: dict[str, str],
 ) -> Callable[[], list[dict]]:
     """[{name, skills, description, url, status}] closure(原 chat.py:803-832)。"""
 
@@ -178,9 +180,9 @@ def _make_agent_card_provider(
 
 
 def _make_simple_step_executor(
-    agent_network: AgentNetwork, llm: ChatOpenAI, memory: ConversationMemory,
-    conf: Config,
-    plugin_manager: PluginRegistry | None = None,
+        agent_network: AgentNetwork, llm: ChatOpenAI, memory: ConversationMemory,
+        conf: Config,
+        plugin_manager: PluginRegistry | None = None,
 ) -> Callable[[str, str], Awaitable[str]]:
     """Phase 5:plugin_manager 不为 None 时优先用 agents_for_intent 拿 manifest.name + summary_prompt;
     否则用 conf.intent 老 dict(向后兼容 Phase 1.7/2/3/4 无 plugin 场景)。"""
@@ -218,8 +220,8 @@ def _make_simple_step_executor(
         # Phase 4:A2A 调用包 span + to_thread_propagating(传播 ContextVar)
         a2a_status = "error"
         with start_span(
-            f"a2a_call.{agent_name}",
-            {"agent": agent_name, "query_len": len(query_str)},
+                f"a2a_call.{agent_name}",
+                {"agent": agent_name, "query_len": len(query_str)},
         ) as a2a_span:
             try:
                 logger.info(f"调用 {agent_name}...")
@@ -252,14 +254,14 @@ def _make_simple_step_executor(
         chain = _prompt | llm
         # Phase 4:summary LLM 也包 span + timer metric
         with start_span(
-            "llm_summarize",
-            {"agent": agent_name, "model": conf.model_name, "intent": "summary"},
+                "llm_summarize",
+                {"agent": agent_name, "model": conf.model_name, "intent": "summary"},
         ):
             LLM_CALL_TOTAL.labels(model=conf.model_name, intent="summary").inc()
             with LLM_CALL_DURATION.labels(model=conf.model_name).time():
-                summarized = chain.invoke(
+                summarized = (await chain.ainvoke(
                     {"query": query_str, "raw_response": agent_result},
-                ).content.strip()
+                )).content.strip()
         return strip_think(summarized)
 
     async def simple_step_executor(intent: str, query_str: str) -> str:
@@ -279,9 +281,9 @@ def _make_simple_step_executor(
 
 
 def build_default_service(
-    user_id: str = "legacy",
-    session_id: str = "legacy",
-    plugin_manager: PluginRegistry | None = None,
+        user_id: str = "legacy",
+        session_id: str = "legacy",
+        plugin_manager: PluginRegistry | None = None,
 ) -> OrchestratorService:
     """Phase 3:装配 OrchestratorService。plugin_manager 可选注入,None 走 fallback。"""
     conf = Config()

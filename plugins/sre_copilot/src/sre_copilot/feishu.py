@@ -37,15 +37,26 @@ from typing import Any
 
 import requests
 
-from CorpAI.platform.sre.approval import (
-    ApprovalService,
-    AlreadyDecided,
-    InsufficientScope,
-    PlanNotFound,
-    TokenMismatch,
-)
-
 logger = logging.getLogger(__name__)
+
+try:
+    # Phase SRE.a-h 的 approval 引擎;若模块未到位则降级(测试场景 / 未部署完)
+    from CorpAI.platform.sre.approval import (
+        ApprovalService,
+        AlreadyDecided,
+        InsufficientScope,
+        PlanNotFound,
+        TokenMismatch,
+    )
+    _APPROVAL_AVAILABLE = True
+except ImportError:
+    ApprovalService = None  # type: ignore[assignment]
+    AlreadyDecided = Exception  # type: ignore[assignment,misc]
+    InsufficientScope = Exception  # type: ignore[assignment,misc]
+    PlanNotFound = Exception  # type: ignore[assignment,misc]
+    TokenMismatch = Exception  # type: ignore[assignment,misc]
+    _APPROVAL_AVAILABLE = False
+    logger.warning("CorpAI.platform.sre.approval 未加载,飞书审批回调降级处理")
 
 
 # ─── 配置(每次查 env,支持测试动态切换) ───
@@ -377,12 +388,17 @@ def verify_signature(
 
     算法:HMAC-SHA256(timestamp + nonce + body, FEISHU_ENCRYPT_KEY),
     飞书把签名放在 X-Lark-Signature header。
+
+    安全修复:未配置 FEISHU_ENCRYPT_KEY 时返回 False(fail-closed),
+    而非原来的 True(完全跳过校验)。
+    调用方(app.py)负责判断是否在开发模式下跳过校验。
     """
     key = _encrypt_key()
     if not key:
-        # 没设 key → 不强制校验(开发期方便)
-        logger.debug("FEISHU_ENCRYPT_KEY 未设,跳过签名校验")
-        return True
+        # 没设 key → fail-closed,拒绝请求
+        # 调用方应检查 FEISHU_ENCRYPT_KEY 是否配置,并在开发模式下显式跳过
+        logger.warning("FEISHU_ENCRYPT_KEY 未设,签名校验失败(fail-closed)")
+        return False
     content = f"{timestamp}{nonce}{body}".encode()
     expected = hmac.new(
         key.encode(), content, hashlib.sha256,

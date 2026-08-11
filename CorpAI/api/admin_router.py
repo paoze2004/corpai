@@ -15,7 +15,7 @@ fail-closed:DB 不可达 → raise HTTPException(500/403)。
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from CorpAI.platform.auth.audit import write_audit_log
@@ -148,8 +148,8 @@ def _list_logs(
 @router.post("/login")
 async def login(
     request: Request,
-    username: str = Query(..., min_length=1),
-    password: str = Query(..., min_length=1),
+    username: str = Body(..., min_length=1),
+    password: str = Body(..., min_length=1),
 ):
     """公开登录:username/password → JWT。失败写 audit log。"""
     user = _lookup_user(username)
