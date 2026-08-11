@@ -1,151 +1,117 @@
-# CorpAI - 企业 AI Copilot 平台
+# CorpAI — 企业 AI Copilot 平台
 
-[![CI](https://github.com/paoze2004/CorpAI/actions/workflows/ci.yml/badge.svg)](https://github.com/paoze2004/CorpAI/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> **多 Agent 企业 AI 平台** — 可插拔插件架构,统一 RBAC + 可观测性 + 管理后台。
-> 业务范围:HR(社保/补充医疗/体检/培训)/ SRE(工单/on-call/K8s)/ FAQ(企业 KB RAG)。
-> 详见 `CLAUDE.md` 与 `docs/REFACTOR_PLAN.md`。
+> 多 Agent 企业 AI 平台。可插拔插件架构,统一 RBAC + 可观测性 + 管理后台。
+> 业务范围:HR(请假/报销/证明/资产/培训/转正/审批) / SRE(工单/on-call/告警/K8s) / FAQ(企业 KB RAG)。
 
-## 核心架构
+## 架构
 
 ```
-        ┌────────────────────────────────────────────┐
-        │  平台核心 (CorpAI/platform/) — 写死,业务零污染 │
-        │  ┌──────────┐  ┌──────────────┐  ┌────────┐ │
-        │  │ Orchestr.│  │ Plugin Mgr   │  │  RBAC  │ │
-        │  └──────────┘  └──────────────┘  └────────┘ │
-        │  ┌──────────┐  ┌──────────────┐  ┌────────┐ │
-        │  │ Auth/JWT │  │ Observability│  │ DB Pool│ │
-        │  └──────────┘  └──────────────┘  └────────┘ │
-        └────────┬────────────────────┬────────────────┘
-                 │ A2A (entry_points) │
-       ┌─────────┼────────────────────┼─────────┐
-       │         │                    │         │
-   ┌───▼───┐ ┌──▼────┐ ┌────────┐ ┌───▼────┐ ┌──▼─────┐
-   │ hr_   │ │devops_│ │ faq    │ │admin UI│ │  SPA   │
-   │assist │ │copilot│ │(RAG)   │ │ /admin │ │  /     │
-   └───────┘ └───────┘ └────────┘ └────────┘ └────────┘
+       ┌─────────────────────────────────────────────┐
+       │  平台核心 (CorpAI/platform/) — 写死,业务零污染  │
+       │  ┌──────────┐ ┌─────────────┐ ┌────────────┐ │
+       │  │Orchestr. │ │ Plugin Mgr  │ │   RBAC     │ │
+       │  └──────────┘ └─────────────┘ └────────────┘ │
+       │  ┌──────────┐ ┌─────────────┐ ┌────────────┐ │
+       │  │Auth/JWT  │ │Observability │ │  DB Pool   │ │
+       │  └──────────┘ └─────────────┘ └────────────┘ │
+       └──────┬──────────────────┬────────────────────┘
+              │  entry_points    │
+    ┌─────────┼──────────────────┼─────────┐
+    │         │                  │         │
+┌───▼────┐ ┌─▼────────┐ ┌──────▼─┐ ┌─────▼────┐
+│  hr_   │ │  sre_    │ │  faq   │ │ admin UI │
+│ assist │ │ copilot  │ │ (RAG)  │ │  /admin  │
+└────────┘ └──────────┘ └────────┘ └──────────┘
 ```
 
-- **平台核心**(`CorpAI/platform/`)— RBAC / Orchestrator / Plugin Manager / Observability / DB,业务零依赖
-- **业务 plugin**(`plugins/`)— 3 真 plugin(hr_assistant / sre_copilot / faq),`entry_points` 自动发现
-- **A2A 子代理**:每个 plugin 一个 A2A 进程(Flask + python_a2a)
-- **MCP 工具**:每个 plugin 自带 FastMCP 服务,`POST /tools/{name}` 调用
-- **管理后台**:`/admin` 5 页(agents / tools / users / logs / metrics)
-- **观测**:Prometheus `/metrics` + trace_id + 结构化日志 + `call_records` 表
+- **平台核心**(`CorpAI/platform/`) — Orchestrator / Plugin Manager / RBAC / Auth / Observability / DB Pool,业务零依赖
+- **业务 plugin**(`plugins/`) — `entry_points` 自动发现,新增业务 = 写一个新 plugin 包
+- **A2A 子代理** — 每个 plugin 跑一个 A2A 进程(Flask + `python_a2a`)
+- **MCP 工具** — 每个 plugin 自带 FastMCP 服务,`POST /tools/{name}` 调用(JSON envelope)
+- **管理后台** — `/admin` 5 页(agents / tools / users / logs / metrics)
+- **可观测性** — Prometheus `/metrics` + trace_id + 结构化日志 + `call_records` 表
 
-## 工程化
+## 业务能力(3 个真 plugin)
 
-- **CI/CD**:`.github/workflows/ci.yml` — push/PR 触发 lint + test + build;`.github/workflows/deploy.yml` — 手动 dispatch 多架构镜像到 GHCR
-- **pre-commit**:`.pre-commit-config.yaml` — 本地 ruff check + format(commit 前自动跑)
-- **Docker**:`Dockerfile.api` + `Dockerfile.plugin` 多阶段、非 root、healthcheck,3 个 plugin 复用同一镜像模板
-- **Lint**:ruff(E/F/W/I/B/C4/UP/SIM/RUF,line-length=100)
+| Plugin | 场景 | A2A | Manifest |
+|--------|------|-----|----------|
+| **hr_assistant** v3.0 | 员工福利 + 8 操作 + 2 跨插件 bridge | `:5010` | 1 agent + 8 ops + 2 bridge = **11** |
+| **sre_copilot** v3.1 | 工单/on-call/告警/K8s + 2 跨插件 bridge | `:5020` | 1 agent + 4 真工具 + 2 bridge = **7** |
+| **faq** v1.1 | 企业 KB 语义检索(Milvus) | `:5030` | 1 agent + 1 tool = **2** |
 
-## 技术栈
+详细清单见 [`docs/PLUGINS.md`](docs/PLUGINS.md)。
 
-| 技术 | 用途 |
-|------|------|
-| Python 3.11+ | 开发语言 |
-| MySQL | 业务数据(用户/RBAC/记忆/调用记录) |
-| Milvus | faq plugin 向量库 |
-| FastMCP (python_a2a) | MCP 工具服务框架 |
-| Flask | A2A 子代理 HTTP |
-| LangChain | LLM 调用编排 |
-| uvicorn | 主 API ASGI 服务器 |
-| MiniMax | LLM (`MiniMax-Text-01`) + Embedding (`embo-01`, 1536 维) |
-| Prometheus | 指标采集 |
-| schedule | 定时任务 |
+### MCP 工具端口速查
 
-## 业务能力(3 真 plugin)
-
-| Plugin | 场景 | A2A | MCP 工具 |
-|--------|------|-----|---------|
-| **hr_assistant** | 员工福利查询 + 人事政策 | :5010 | `query_benefits`(:8010) / `query_policy`(:8011) |
-| **sre_copilot** | 工单查询 + on-call 联系 + Pod 重启 | :5020 | `query_incident`(:8020) / `restart_pod`(:8021, dry_run) |
-| **faq** | 企业 KB 语义检索(VPN/远程办公/差旅等) | :5030 | `query_faq`(:8030) |
+| Plugin | MCP 服务 | 端口 | 工具 |
+|--------|---------|------|------|
+| hr_assistant | leave / reim / cert / asset / train / reg / approve / my / bridge_faq / bridge_sre | `:8017-8026` | `submit_leave` 等 8 个 ops + 2 bridge |
+| sre_copilot | incident / oncall / alert / k8s / bridge_hr / bridge_faq | `:8020-8022 / :8027-8028` | `query_incident` / `query_oncall` / `query_alert` / `get_pod_logs` + 2 bridge |
+| faq | query_mcp | `:8030` | `query_faq` |
 
 ## 项目结构
 
 ```
-CorpAI/                              ← 项目根
-├── pyproject.toml                       # 依赖声明(uv 锁 pyproject + uv.lock)
+CorpAI/                            ← 仓库根 (paoze2004/corpai)
+├── pyproject.toml                 # 依赖 (uv 锁)
 ├── uv.lock
-├── Makefile                             # 常用命令(make help 查看)
+├── Makefile                       # make help 查看所有命令
 ├── README.md
-├── CorpAI/                          ← Python 包
-│   ├── config.py                       # .env 化配置
-│   ├── logging.py                      # 结构化日志
+├── CorpAI/                        ← Python 包
+│   ├── config.py                  # .env 化配置
+│   ├── logging.py                 # 结构化日志
 │   ├── api/
-│   │   ├── app.py                      # FastAPI :8080(SPA + admin + /api/chat)
-│   │   └── admin_router.py             # 管理后台 5 页 API
+│   │   ├── app.py                 # FastAPI :8080 (SPA + admin + /api/chat)
+│   │   └── admin_router.py        # 管理后台 5 页 API
 │   ├── core/
-│   │   ├── memory.py                   # 6 层 MemoryPool
-│   │   └── prompts.py                  # intent / planning / react / system prompts
-│   ├── platform/                       # 平台核心
-│   │   ├── wiring.py                   # 组合根 — 唯一允许 import A2A/LangChain/MySQL
-│   │   ├── orchestrator/               # 5 模块,≤300 LOC 每个
-│   │   │   ├── service.py              # OrchestratorService — 唯一 high-level 入口
-│   │   │   ├── intent.py               # IntentRecognizer(只识别 hr/devops/faq)
-│   │   │   ├── planner.py              # TaskPlanner(INDEPENDENT_INTENTS = hr/devops/faq)
-│   │   │   ├── react_loop.py           # ReActRunner
-│   │   │   ├── streaming.py            # ThinkBlockFilter + SSE helpers
-│   │   │   └── memory_gateway.py       # MemoryPool 6 层包装
-│   │   ├── auth/                       # JWT / RBAC scopes / passwords / audit
-│   │   ├── observability/              # trace / log / metrics / call_record
-│   │   ├── db.py                       # MySQL pool 单例
-│   │   └── plugin_manager.py           # entry_points 自动发现
-│   ├── utils/
-│   │   └── format.py                   # JSON encoder + strip_think
-│   └── static/                         # 前端 SPA + admin/
-├── plugins/                            # 业务 plugin(可插拔)
-│   ├── hr_assistant/                   # 福利/政策 8+10 条数据
-│   ├── sre_copilot/                 # 8 工单 + 4 on-call 团队
-│   └── faq/                            # 12 条企业 KB(VPN/远程办公/差旅等)
-├── tests/                              # pytest
-│   ├── platform/                       # orchestrator 模块测试
-│   ├── auth/                           # JWT/RBAC/scope 测试
-│   ├── memory_pool/                    # 6 层记忆测试
-│   └── observability/                  # trace/metrics/call_record 测试
-├── scripts/
-│   ├── bootstrap_super_admin.py        # 初始 super_admin 账号
-│   ├── run_all.bat                     # 一键启全部 4 服务(Windows)
-│   ├── stop_all.bat
-│   └── migrate_add_*.py                # auth / observability / user_id
-├── sql/
-│   ├── create_all_tables.sql
-│   ├── migrate_add_auth.sql
-│   ├── migrate_add_observability.sql
-│   └── migrate_add_user_id.sql
-└── logs/
+│   │   ├── memory.py              # 6 层 MemoryPool(向后兼容迁移)
+│   │   └── prompts.py             # intent / planning / react / system prompts
+│   ├── platform/                  # 平台核心
+│   │   ├── wiring.py              # 组合根 — 唯一允许 import A2A/LangChain/MySQL 的文件
+│   │   ├── orchestrator/          # 7 模块,≤300 LOC 每个
+│   │   │   ├── service.py         # OrchestratorService — 唯一 high-level 入口
+│   │   │   ├── intent.py          # IntentRecognizer
+│   │   │   ├── planner.py         # TaskPlanner (INDEPENDENT_INTENTS)
+│   │   │   ├── react_loop.py      # ReActRunner
+│   │   │   ├── streaming.py       # ThinkBlockFilter + SSE helpers
+│   │   │   ├── tools_gateway.py   # MCP 工具调用网关
+│   │   │   └── memory_gateway.py  # MemoryPool 6 层包装
+│   │   ├── auth/                  # JWT / RBAC scopes / passwords / audit
+│   │   ├── observability/         # trace / log / metrics / call_record
+│   │   ├── db.py                  # MySQL pool 单例
+│   │   └── plugin_manager.py      # entry_points 自动发现
+│   ├── utils/format.py            # JSON encoder + strip_think
+│   └── static/                    # 前端 SPA + admin/
+├── plugins/                       # 业务 plugin(可插拔)
+│   ├── hr_assistant/              # 8 ops + 2 bridge + 11 manifest
+│   ├── sre_copilot/               # 4 真工具 + 2 bridge + 7 manifest
+│   └── faq/                       # Milvus RAG + 2 manifest
+├── tests/                         # pytest
+│   ├── platform/                  # orchestrator 模块测试
+│   ├── auth/                      # JWT/RBAC/scope 测试
+│   ├── memory_pool/               # 6 层记忆测试
+│   └── observability/             # trace/metrics/call_record 测试
+├── docs/
+│   ├── REFACTOR_PLAN.md
+│   ├── PLUGINS.md
+│   └── adr/                       # 12 个 ADR(架构决策记录)
+├── scripts/                       # 迁移 / 引导 / 启停
+├── sql/                           # create_all_tables.sql + 迁移脚本
+├── logs/                          # (gitignored)运行时日志
+├── Dockerfile.api
+├── Dockerfile.plugin
+└── corpai-{mysql,milvus,redis,platform}.yml
 ```
-
-## 写新业务 plugin
-
-```bash
-mkdir -p plugins/my_plugin/src/my_plugin
-# 写 pyproject.toml + plugin.py + prompts.py + server.py + entry.py
-uv pip install -e plugins/my_plugin
-# 自动被 discover_all() 通过 entry_points 发现
-```
-
-详见 `docs/PLUGINS.md`。
-
-## 数据库表
-
-| 表名 | 用途 |
-|------|------|
-| `user_profiles` / `query_history` / `short_term_messages` / `cross_agent_context` | 6 层记忆(`platform/orchestrator/memory_gateway.py`) |
-| `auth_users` / `auth_audit_log` | RBAC 用户 + 审计(`platform/auth/`) |
-| `call_records` | 可观测性调用记录(`platform/observability/call_record.py`) |
 
 ## 快速开始
 
-### 0. 装依赖(首次克隆后)
+### 0. 装依赖
 
 ```bash
-# 装 uv(https://docs.astral.sh/uv/getting-started/installation/)
+# 装 uv: https://docs.astral.sh/uv/
 uv sync --group dev
 ```
 
@@ -153,48 +119,50 @@ uv sync --group dev
 
 ```bash
 mysql -u root -p < sql/create_all_tables.sql
-$AUTH_JWT_SECRET=dev-secret uv run python scripts/migrate_add_user_id.py
-$AUTH_JWT_SECRET=dev-secret uv run python scripts/migrate_add_auth.py
-$AUTH_JWT_SECRET=dev-secret uv run python scripts/migrate_add_observability.py
-$AUTH_JWT_SECRET=dev-secret uv run python scripts/bootstrap_super_admin.py
+make migrate-phase2        # user_id + task_context + cross_agent_context
+make migrate-phase3        # auth_users / auth_roles / auth_permissions / auth_audit_log
+make migrate-phase4        # call_records
+make bootstrap-superadmin  # 第一个 super_admin(要求 AUTH_JWT_SECRET 已设)
 ```
 
 ### 2. 装 3 个 plugin
 
 ```bash
-make install-plugins
-# 等价于:uv pip install -e plugins/hr_assistant -e plugins/sre_copilot -e plugins/faq
+make install-plugins       # uv pip install -e plugins/{hr_assistant,sre_copilot,faq}
 ```
 
-### 3. 启 plugin 服务(3 个进程)
+### 3. 启 plugin 服务(每个 1 A2A + N MCP)
 
 ```bash
-make run-hr-assistant        # A2A :5010 + benefits_mcp :8010 + policy_mcp :8011
-make run-sre-copilot      # A2A :5020 + incident_mcp :8020 + k8s_mcp :8021 (dry_run)
-make run-faq                 # A2A :5030 + faq_query_mcp :8030
+make run-hr-assistant      # A2A :5010 + MCP :8017-8026 (8 ops + 2 bridge)
+make run-sre-copilot       # A2A :5020 + MCP :8020-8028 (4 tools + 2 bridge)
+make run-faq               # A2A :5030 + MCP :8030 (1 tool)
 ```
 
 ### 4. 启主服务
 
 ```bash
-$AUTH_JWT_SECRET=dev-secret make run-api
-# http://127.0.0.1:8080  (用户 SPA)
-# http://127.0.0.1:8080/admin  (管理后台)
+make run-api               # FastAPI :8080 (用户 SPA + admin 后台 + /api/chat)
 ```
 
-> Windows 一键启:`scripts/run_all.bat`(hr / devops / faq / main 4 服务全部后台启动)
-> 停:`scripts/stop_all.bat`
+访问:
+- 用户 SPA: <http://127.0.0.1:8080>
+- 管理后台: <http://127.0.0.1:8080/admin>
 
 ### 5. 跑测试
 
 ```bash
-make test           # 平台 + 3 plugin 全套
-make test-unit      # 纯单元测试(无 MySQL/Milvus)
+make test                  # 全部(平台 + 3 plugin)
+make test-unit             # 纯单元(无 MySQL/Milvus)
+make test-platform         # orchestrator + memory_pool
+make test-auth             # JWT/RBAC/scope
+make test-observability    # trace/metrics/call_record
+make test-plugins          # 3 plugin
 ```
 
-## 配置(.env)
+## 配置 (.env)
 
-26 个变量,参考 `.env.example`。核心变量:
+**41 个变量**,参考 `.env.example`。核心:
 
 ```bash
 # LLM
@@ -208,55 +176,59 @@ MYSQL_USER=admin
 MYSQL_PASSWORD=<your-password>
 MYSQL_DATABASE=CorpAI
 
-# Milvus(faq plugin 用,docker compose -f corpai-milvus.yml up -d 启)
+# Milvus (faq plugin RAG)
 MILVUS_HOST=localhost
 MILVUS_PORT=19530
 EMBEDDING_MODEL=embo-01
 EMBEDDING_DIM=1536
 
-# RBAC(必须设置,否则 admin 端点启动失败)
+# RBAC (必须设,否则 admin 端点启动失败)
 AUTH_JWT_SECRET=<random-32-chars-min>
+
+# SRE 真 SDK (Phase 6 接入)
+JIRA_URL=
+PAGERDUTY_API_KEY=
+PROMETHEUS_URL=
+KUBECONFIG=
+
+# 飞书审批 (SRE)
+FEISHU_APP_ID=
+FEISHU_APP_SECRET=
 ```
 
 ## 意图路由
 
-意图路由由 `plugin_manager.agents_for_intent(intent)` 自动完成:
+意图路由由 `platform/plugin_manager.py` 的 `agents_for_intent(intent)` 自动完成:
 
-| Plugin | 处理意图 | Manifest 名 |
-|--------|---------|------------|
-| hr_assistant | hr / benefits | `hr_assistant` (A2A :5010) |
-| sre_copilot | devops | `sre_copilot` (A2A :5020) |
-| faq | faq | `faq` (A2A :5030) |
+| Plugin | 处理 intent | Manifest |
+|--------|---------|----------|
+| hr_assistant | `hr` / `leave` / `reimbursement` | `:5010` |
+| sre_copilot | `sre` / `incident` / `oncall` / `alert` / `pod` | `:5020` |
+| faq | `faq` | `:5030` |
 
 out_of_scope 走 LLM 直答兜底。
-
-## 验证场景(8/8 通过)
-
-```bash
-curl -X POST http://127.0.0.1:8080/api/chat -H 'Content-Type: application/json' \
-  -d '{"message":"公司有什么福利"}'
-# → B001-B008 福利表
-
-curl -X POST http://127.0.0.1:8080/api/chat -H 'Content-Type: application/json' \
-  -d '{"message":"INC-001 现在什么状态"}'
-# → INC-001 P0/open/张工/platform
-
-curl -X POST http://127.0.0.1:8080/api/chat -H 'Content-Type: application/json' \
-  -d '{"message":"VPN 怎么申请"}'
-# → FAQ001 5 步骤
-```
 
 ## 路线图
 
 | Phase | 状态 | 内容 |
 |-------|------|------|
-| 0 | ✅ | 稳定基线 |
-| 1.7 | ✅ | ChatService 拆分 7 模块 |
+| 0 | ✅ | 稳定基线 — 修测试、删 dead code、ADR |
+| 1.7 | ✅ | ChatService 拆分 7 模块(orchestrator/) |
 | 2 | ✅ | DB 集中化 + 记忆 per-user |
-| 3 | ✅ | Plugin Manager + RBAC + Admin MVP |
-| 4 | ✅ | Observability + CI/CD |
-| 5 | ✅ | 3 真 plugin + 文档 |
-| 6 | ✅ | 硬化(.env + Pydantic + async) |
-| 7 | ✅ | 终版 — 抹旅游残留,纯企业 AI Copilot |
+| 3 | ✅ | Plugin Manager + RBAC + Admin 后台 5 页 |
+| 4 | ✅ | Observability(trace/metrics/call_records) |
+| 5 | ✅ | 3 真 plugin(hr / sre / faq) |
+| 6 | ✅ | 硬化(.env + Pydantic + async + 真 SDK) |
+| 7 | ✅ | 收敛到企业 AI Copilot 形态 |
 
-详见 `docs/REFACTOR_PLAN.md` 与 `docs/adr/`。
+详见 [`docs/REFACTOR_PLAN.md`](docs/REFACTOR_PLAN.md) 与 [`docs/adr/`](docs/adr/)(12 个 ADR)。
+
+## 文档
+
+- 平台架构 + 重构计划: [`docs/REFACTOR_PLAN.md`](docs/REFACTOR_PLAN.md)
+- Plugin 编写指南(v3.x): [`docs/PLUGINS.md`](docs/PLUGINS.md)
+- 架构决策记录: [`docs/adr/`](docs/adr/)
+
+## License
+
+未声明(公开仓库,默认适用各国著作权法)。如需明确许可,请提交 issue 或 PR 注明偏好(MIT / Apache-2.0 / BSD-3-Clause)。

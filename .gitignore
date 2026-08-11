@@ -5,10 +5,31 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
+.ruff_cache/
 
 # Virtual environments
-.venv
+.venv/
 
 # Local environment variables (contains secrets, do NOT commit)
 .env
+.env.local
+
+# Runtime artifacts
 logs/
+*.log
+
+# Docker compose one-shot outputs
+compose_pull.log
+
+# Claude Code local state (sessions, skills cache, settings)
+.claude/
+
+# JetBrains / PyCharm IDE
+.idea/
+
+# Project memory (Claude Code auto-loads this; do NOT publish)
+CLAUDE.md
+
+# Backup directories from destructive git operations
+.git.backup-*/
