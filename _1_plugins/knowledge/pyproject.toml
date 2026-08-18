@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "corpai-plugin-knowledge"
+version = "2.0.0"
+description = "CorpAI Knowledge plugin — 企业知识中心(历史 incident/SOP/技术文档/FAQ 检索)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.entry-points."platform.plugins"]
+knowledge = "knowledge.plugin:register"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/knowledge"]
+
+[tool.pytest.ini_options]
+# 项目根加进 sys.path,让 `import _0_CorpAI` 找到
+pythonpath = ["../..", "../../_0_CorpAI"]
+# v3.2:tests/ 改名 knowledge_tests/ 避免跟 hr_assistant plugin 同名 module
+testpaths = ["knowledge_tests"]

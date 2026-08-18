@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "corpai-plugin-sre-copilot"
+version = "3.1.0"
+description = "CorpAI SRE Copilot plugin — 告警 → 计划 → 飞书审批 → 执行(incident / oncall / alert / k8s + 跨插件桥)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.entry-points."platform.plugins"]
+sre_copilot = "sre_copilot.plugin:register"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sre_copilot"]
+
+[tool.pytest.ini_options]
+# 项目根加进 sys.path,让 `import _0_CorpAI` 找到
+pythonpath = ["../..", "../../_0_CorpAI"]
+# v3.2:tests/ 改名 sre_tests/ 避免跟其他 plugin 同名 module
+testpaths = ["sre_tests"]

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "corpai-plugin-hr-assistant"
+version = "1.0.0"
+description = "CorpAI HR 助手 plugin — 员工福利(B001-B008) + 人事政策(P001-P010)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.entry-points."platform.plugins"]
+hr_assistant = "hr_assistant.plugin:register"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hr_assistant"]
+
+[tool.pytest.ini_options]
+# 项目根加进 sys.path,让 `import _0_CorpAI` 找到
+pythonpath = ["../..", "../../_0_CorpAI"]
+# v3.2:tests/ 改名 hr_tests/ 避免跟 knowledge plugin 同名 module
+testpaths = ["hr_tests"]

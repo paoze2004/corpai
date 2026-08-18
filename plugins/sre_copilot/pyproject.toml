@@ -1,9 +1,0 @@
-[project]
-name = "corpai-plugin-sre-copilot"
-version = "3.1.0"
-description = "CorpAI SRE Copilot plugin — 告警 → 计划 → 飞书审批 → 执行(incident / oncall / alert / k8s + 跨插件桥)"
-requires-python = ">=3.11"
-dependencies = []
-
-[project.entry-points."platform.plugins"]
-sre_copilot = "sre_copilot.plugin:register"

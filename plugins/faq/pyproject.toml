@@ -1,9 +1,0 @@
-[project]
-name = "corpai-plugin-faq"
-version = "1.0.0"
-description = "CorpAI FAQ plugin — 企业 KB 语义检索(FAQ001~012:VPN/远程办公/差旅等)"
-requires-python = ">=3.11"
-dependencies = []
-
-[project.entry-points."platform.plugins"]
-faq = "faq.plugin:register"
