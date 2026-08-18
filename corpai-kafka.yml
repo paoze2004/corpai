@@ -1,0 +1,56 @@
+# corpai-kafka.yml — _0_CorpAI SRE 数据 pipeline 的消息总线(M6 引入)
+#
+# 用 KRaft 模式(Kafka 4.x,不要 zookeeper),单节点够开发/demonstration 用。
+# 生产请配 ≥3 broker + 副本因子 3。
+#
+# 启停:
+#   启: docker compose -f corpai-kafka.yml up -d
+#   停: docker compose -f corpai-kafka.yml down
+#   查 topic: docker exec corpai-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+#
+# Topic 设计(由 Mock Producer + SRE Pipeline consumer 共同使用):
+#   sre.alerts       — 触发信号(Alertmanager → SRE Pipeline)
+#   sre.metrics      — Prometheus-style 指标(5xx/error rate/latency)
+#   sre.k8s          — K8s pod 事件(OOMKilled/restart/oom)
+#   sre.logs         — Loki-style 错误日志堆栈
+#   sre.historical   — Knowledge match(从 Milvus / Knowledge Plugin)
+#   sre.actions      — ActionPlan 入队(SRE → Action Executor)
+#   sre.audit        — 执行结果(Executor → audit/verify)
+#
+# 端口:
+#   9092  — PLAINTEXT(Kafka broker,producer/consumer 用)
+#   9094  — KRAFT 内部协议(不要用)
+#   8080  — 静态端口占位(没用,Kafka 没用 8080)
+
+services:
+  kafka:
+    container_name: corpai-kafka
+    image: confluentinc/cp-kafka:7.5.0
+    ports:
+      - "9092:9092"
+    environment:
+      # KRaft 单节点配置(开发用)
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      # 自动建 topic(dev 便利)
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_NUM_PARTITIONS=3
+      - KAFKA_DEFAULT_REPLICATION_FACTOR=1
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      # 持久化
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - corpai_kafka_data:/var/lib/kafka/data
+
+volumes:
+  corpai_kafka_data:
