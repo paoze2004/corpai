@@ -20,15 +20,15 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 # 2. 装 3 个 plugin(每个 plugin 一个 pyproject)
-COPY plugins/hr_assistant/pyproject.toml plugins/hr_assistant/uv.lock* /app/plugins/hr_assistant/
-COPY plugins/sre_copilot/pyproject.toml plugins/sre_copilot/uv.lock* /app/plugins/sre_copilot/
-COPY plugins/faq/pyproject.toml plugins/faq/uv.lock* /app/plugins/faq/
+COPY _1_plugins/hr_assistant/pyproject.toml _1_plugins/hr_assistant/uv.lock* /app/_1_plugins/hr_assistant/
+COPY _1_plugins/sre_copilot/pyproject.toml _1_plugins/sre_copilot/uv.lock* /app/_1_plugins/sre_copilot/
+COPY _1_plugins/knowledge/pyproject.toml _1_plugins/knowledge/uv.lock* /app/_1_plugins/knowledge/
 
 # 3. 复制源码并 install 整个项目
-COPY CorpAI ./CorpAI
-COPY plugins/hr_assistant/src ./plugins/hr_assistant/src
-COPY plugins/sre_copilot/src ./plugins/sre_copilot/src
-COPY plugins/faq/src ./plugins/faq/src
+COPY _0_CorpAI ./_0_CorpAI
+COPY _1_plugins/hr_assistant/src ./_1_plugins/hr_assistant/src
+COPY _1_plugins/sre_copilot/src ./_1_plugins/sre_copilot/src
+COPY _1_plugins/knowledge/src ./_1_plugins/knowledge/src
 
 RUN uv sync --frozen --no-dev
 
@@ -48,7 +48,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # SQL DDL 供初始化用
-COPY --chown=corpai:corpai sql/ /app/sql/
+COPY --chown=corpai:corpai _3_sql/ /app/_3_sql/
 
 # 健康检查 — 用 Python 自带 urllib,免装 curl
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
@@ -58,5 +58,5 @@ USER corpai
 
 EXPOSE 8080
 
-# 启动 uvicorn。入口 CorpAI.api.app:app 来自 api/app.py
-CMD ["uvicorn", "CorpAI.api.app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+# 启动 uvicorn。入口 _0_CorpAI._0_api.app:app 来自 _0_api/app.py
+CMD ["uvicorn", "_0_CorpAI._0_api.app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

@@ -4,39 +4,44 @@ version = "0.1.0"
 description = "CorpAI 企业 AI Copilot 平台 — 可插拔多 Agent,统一 RBAC + 可观测性"
 requires-python = ">=3.11"
 # 注意：本项目是"应用项目"（application），不是"库"（library）。
-# 因此没有 [build-system] / [tool.setuptools] 段——不把 CorpAI 自身
-# 安装到 site-packages。运行时通过 `python -m CorpAI.xxx` 从源码目录启动。
+# 因此没有 [build-system] / [tool.setuptools] 段——不把 _0_CorpAI 自身
+# 安装到 site-packages。运行时通过 `python -m _0_CorpAI.xxx` 从源码目录启动。
 #
 # 依赖说明：
 #   - pyproject.toml 只声明"意图"（最低版本要求）
 #   - 精确版本由 uv.lock 锁定（不要手动改锁文件，交给 uv lock 管理）
-#   - 代码里未使用的包不写进来（flask / streamlit / dashscope SDK / MiniMax SDK / langchain-mcp-adapters 都不在依赖里）
 dependencies = [
     # ===== Web 框架 =====
     "fastapi>=0.116.0",         # FastAPI 主框架
     "uvicorn[standard]>=0.35.0", # ASGI 服务器（含 httptools / uvloop / websockets 推荐依赖）
     "pydantic>=2.0",             # 数据校验（虽然 FastAPI 间接依赖，但代码里直接 import，应显式声明）
-
     # ===== 可观测性（Phase 4）=====
     "prometheus-client>=0.20",   # /metrics 端点 + Counter/Histogram 指标
-
+    "opentelemetry-api>=1.27.0",     # OTel traces API(Phase observability 升级)
+    "opentelemetry-sdk>=1.27.0",     # OTel SDK(TracerProvider / BatchSpanProcessor)
+    "opentelemetry-exporter-otlp>=1.27.0",  # OTLP 导出器,默认不开,设 OTEL_EXPORTER_OTLP_ENDPOINT 启用
+    "opentelemetry-instrumentation-fastapi>=0.48b0",  # FastAPI 自动 instrument(每个请求一个 span)
     # ===== LLM 编排 =====
-    # 代码使用 langchain 0.3.x API（create_tool_calling_agent / AgentExecutor），
-    # 锁住 <1.0 防止 uv 升到 1.x 后 API 不兼容
-    "langchain>=0.3.0,<1.0",
-    "langchain-core>=0.3.0,<1.0",
-    "langchain-openai>=0.3.0,<1.0",
-
+    # LangChain v1.0 已 stable(2025-10-20),v0.3 LTS 已于 2026-03 终止支持 →
+    # 升 v1.0 是安全需求。_0_CorpAI 仅用 LCEL + ChatPromptTemplate + ChatOpenAI
+    # 这套最小子集,迁移面小;实际跑测试逐步修剩余 breaking。
+    "langchain>=1.0.0",
+    "langchain-core>=1.0.0",
+    "langchain-openai>=1.0.0",
     # ===== 数据存储 =====
     "mysql-connector-python>=9.0.0", # MySQL 驱动（官方版，含连接池）
     "pymilvus>=2.5.0",                # Milvus 向量数据库客户端
-
     # ===== 业务工具 =====
     "python-a2a>=0.5.0", # A2A 协议 + FastMCP 框架（一站式依赖，涵盖 A2AServer / FastMCP / create_fastapi_app）
-    "requests>=2.32.0",  # HTTP 客户端（调 Embedding / 内部 A2A / 测试）
+    "mcp>=1.0",          # Anthropic 官方 MCP Python SDK(StreamableHTTP transport + ClientSession)
+    "httpx>=0.27.0",     # HTTP 客户端（连接池;faq embedding + SRE 异步路径用）
+    "redis>=5.0",        # Redis 客户端（SRE async executor + faq embedding L2 缓存共享）
+    "aiokafka>=0.10.0",   # Kafka async client(M6 起:SRE 数据 pipeline 走 Kafka)
+    "requests>=2.32.0",  # HTTP 客户端（legacy fallback;新代码优先 httpx）
     "pytz>=2025.0",      # 时区处理
     "schedule>=1.2.0",   # 定时任务（cron 风格调度）
     "python-dotenv>=1.0.0", # .env 文件加载
+    "fastmcp>=3.4.7",
 ]
 
 # ===== 开发 / 测试依赖（PEP 735 标准，uv 原生支持）=====

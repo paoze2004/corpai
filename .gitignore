@@ -28,9 +28,6 @@ compose_pull.log
 # JetBrains / PyCharm IDE
 .idea/
 
-# Project memory (Claude Code auto-loads this; do NOT publish)
-CLAUDE.md
-
 # Backup directories from destructive git operations
 .git.backup-*/
 

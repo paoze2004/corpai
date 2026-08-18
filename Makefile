@@ -1,4 +1,4 @@
-# CorpAI 项目 Makefile
+# _0_CorpAI 项目 Makefile
 # 用法:
 #   make help           查看所有命令
 #   make sync           装依赖
@@ -6,12 +6,12 @@
 #   make run-api        启 FastAPI 后端
 #   ...
 
-.PHONY: help sync test test-unit test-platform test-auth test-observability test-plugins test-phase3 test-phase4 test-phase5 install-plugins migrate-phase2 migrate-phase3 migrate-phase4 bootstrap-superadmin run-api run-hr-assistant run-sre-copilot run-faq clean
+.PHONY: help sync test test-unit test-platform test-auth test-observability test-plugins test-phase3 test-phase4 test-phase5 install-plugins migrate-phase2 migrate-phase3 migrate-phase4 bootstrap-superadmin run-api run-hr-assistant run-sre-copilot run-knowledge run-mcp-hr-assistant run-mcp-sre-copilot run-mcp-knowledge clean
 
 help:  ## 显示帮助
 	@echo "可用命令:"
 	@echo "  make sync                 同步依赖(uv sync --group dev)"
-	@echo "  make test                 跑全部测试"
+	@echo "  make test                 跑全部测试(含 install-plugins 前置)"
 	@echo "  make test-unit            只跑纯单元测试(不依赖外部服务)"
 	@echo "  make test-platform        Phase 1.7 + Phase 2 orchestrator/memory_pool"
 	@echo "  make test-auth            Phase 3 RBAC + JWT 单元测试"
@@ -26,82 +26,104 @@ help:  ## 显示帮助
 	@echo "  make migrate-phase4       跑 Phase 4 Observability 迁移(call_records 表)"
 	@echo "  make bootstrap-superadmin 引导创建第一个 super_admin(要求 AUTH_JWT_SECRET 已设)"
 	@echo ""
+	@echo "  --- A2A servers ---"
 	@echo "  make run-api              启动 FastAPI 后端(端口 8080)"
 	@echo "  make run-hr-assistant     启 hr_assistant A2A server(端口 5010)"
-	@echo "  make run-sre-copilot   启 sre_copilot A2A server(端口 5020)"
-	@echo "  make run-faq              启 faq A2A server(端口 5030)"
+	@echo "  make run-sre-copilot      启 sre_copilot A2A server(端口 5020)"
+	@echo "  make run-knowledge        启 knowledge A2A server(端口 5030,原 faq)"
+	@echo ""
+	@echo "  --- MCP servers (Anthropic 官方 spec,StreamableHTTP) ---"
+	@echo "  make run-mcp-hr-assistant 启 hr_assistant MCP server(端口 8001,9 tools)"
+	@echo "  make run-mcp-sre-copilot  启 sre_copilot 5 个 MCP server(8020/8021/8022/8027/8028)"
+	@echo "  make run-mcp-knowledge    启 knowledge MCP server(端口 8030)"
 	@echo ""
 	@echo "  make clean                清理 __pycache__ 和 pytest 缓存"
 	@echo ""
-	@echo "  Milvus 启停见 scripts/start_milvus.py / stop_milvus.py"
+	@echo "  Milvus 启停见 _2_scripts/start_milvus.py / stop_milvus.py"
 
 # ==================== 依赖管理 ====================
 sync:  ## 装运行时 + 开发依赖
 	uv sync --group dev
 
 # ==================== 测试 ====================
-test:  ## 跑全部测试
-	uv run pytest tests/
+# 注意:test / run-api 依赖 install-plugins,否则 plugin import 失败。
+# 但 install-plugins 是 uv pip 操作,跟 pytest 平级,加 .PHONY 依赖关系而非 make rule 依赖。
+
+test:  ## 跑全部测试(需先 make install-plugins)
+	uv run pytest _4_tests/
 
 test-unit:  ## 只跑纯单元测试(不依赖外部服务)
-	uv run pytest tests/platform tests/memory_pool tests/auth tests/observability -m "not integration"
+	uv run pytest _4_tests/platform _4_tests/memory_pool _4_tests/auth _4_tests/observability -m "not integration"
 
 test-platform:  ## Phase 1.7 + Phase 2 orchestrator + memory_pool 单元测试
-	uv run pytest tests/platform tests/memory_pool -m "not integration"
+	uv run pytest _4_tests/platform _4_tests/memory_pool -m "not integration"
 
 test-auth:  ## Phase 3 RBAC + JWT 单元测试
-	AUTH_JWT_SECRET=dev-secret uv run pytest tests/auth -m "not integration"
+	AUTH_JWT_SECRET=dev-secret uv run pytest _4_tests/auth -m "not integration"
 
-test-observability:  ## Phase 4 Observability 单元测试
-	uv run pytest tests/observability -m "not integration"
+test-observability:  ## Phase 4 Observability 单元测试(trace/log/metrics/call_record)
+	uv run pytest _4_tests/observability -m "not integration"
 
-test-plugins:  ## 3 个真插件单元测试
-	cd plugins/hr_assistant && uv run pytest -m "not integration"
+test-plugins:  ## 3 个真插件单元测试(需先 make install-plugins)
+	cd _1_plugins/hr_assistant && uv run pytest -m "not integration"
 	cd ../sre_copilot && uv run pytest -m "not integration"
-	cd ../faq && uv run pytest -m "not integration"
+	cd ../knowledge && uv run pytest -m "not integration"
 
 test-phase3:  ## Phase 1+2+3 全部单元测试
-	AUTH_JWT_SECRET=dev-secret uv run pytest tests/platform tests/memory_pool tests/auth -m "not integration"
+	AUTH_JWT_SECRET=dev-secret uv run pytest _4_tests/platform _4_tests/memory_pool _4_tests/auth -m "not integration"
 
 test-phase4:  ## Phase 1+2+3+4 全部单元测试
-	AUTH_JWT_SECRET=dev-secret uv run pytest tests/platform tests/memory_pool tests/auth tests/observability -m "not integration"
+	AUTH_JWT_SECRET=dev-secret uv run pytest _4_tests/platform _4_tests/memory_pool _4_tests/auth _4_tests/observability -m "not integration"
 
 test-phase5:  ## Phase 1+2+3+4+5 全部单元测试
-	AUTH_JWT_SECRET=dev-secret uv run pytest tests/platform tests/memory_pool tests/auth tests/observability -m "not integration"
-	cd plugins/hr_assistant && uv run pytest -m "not integration"
+	AUTH_JWT_SECRET=dev-secret uv run pytest _4_tests/platform _4_tests/memory_pool _4_tests/auth _4_tests/observability -m "not integration"
+	cd _1_plugins/hr_assistant && uv run pytest -m "not integration"
 	cd ../sre_copilot && uv run pytest -m "not integration"
-	cd ../faq && uv run pytest -m "not integration"
+	cd ../knowledge && uv run pytest -m "not integration"
 
 # ==================== 迁移 ====================
 migrate-phase2:  ## Phase 2 MySQL DDL 迁移(user_id + task_context + cross_agent_context)
-	uv run python scripts/migrate_add_user_id.py
+	uv run python _2_scripts/migrate_add_user_id.py
 
 migrate-phase3:  ## Phase 3 MySQL DDL 迁移(auth_* 4 张表)
-	uv run python scripts/migrate_add_auth.py
+	uv run python _2_scripts/migrate_add_auth.py
 
-migrate-phase4:  ## Phase 4 MySQL DDL 迁移(call_records 表)
-	uv run python scripts/migrate_add_observability.py
+migrate-phase4:  ## Phase 4 Observability 迁移(call_records 表)
+	uv run python _2_scripts/migrate_add_observability.py
 
 bootstrap-superadmin:  ## 引导第一个 super_admin
-	AUTH_JWT_SECRET=dev-secret uv run python scripts/bootstrap_super_admin.py admin
+	AUTH_JWT_SECRET=dev-secret uv run python _2_scripts/bootstrap_super_admin.py admin
 
 # ==================== 服务启动 ====================
-install-plugins:  ## 装 3 个真插件(本地 editable)
-	uv pip install -e plugins/hr_assistant
-	uv pip install -e plugins/sre_copilot
-	uv pip install -e plugins/faq
+install-plugins:  ## 装 3 个真插件(本地 editable)── 跑 test/run-api 前必跑
+	uv pip install -e _1_plugins/hr_assistant
+	uv pip install -e _1_plugins/sre_copilot
+	uv pip install -e _1_plugins/knowledge
 
-run-api:  ## 启动 FastAPI 后端
-	uv run python -m CorpAI.api.app
+# 平台 A2A server
+run-api:  ## 启动 FastAPI 后端(需先 make install-plugins)
+	uv run python -m _0_CorpAI._0_api.app
 
+# Plugin A2A servers(LLM agent 入口)
 run-hr-assistant:  ## 启 hr_assistant A2A server(端口 5010)
-	cd plugins/hr_assistant && uv run python -m hr_assistant.entry
+	cd _1_plugins/hr_assistant && uv run python -m hr_assistant.entry
 
 run-sre-copilot:  ## 启 sre_copilot A2A server(端口 5020)
-	cd plugins/sre_copilot && uv run python -m sre_copilot.entry
+	cd _1_plugins/sre_copilot && uv run python -m sre_copilot.entry
 
-run-faq:  ## 启 faq A2A server(端口 5030)
-	cd plugins/faq && uv run python -m faq.entry
+run-knowledge:  ## 启 knowledge A2A server(端口 5030,原 faq)
+	cd _1_plugins/knowledge && uv run python -m knowledge.entry
+
+# Plugin MCP servers(Anthropic 官方 spec,StreamableHTTP,JSON-RPC 2.0)
+# 跟 A2A 是两套独立进程。Tool 调用走 MCP,Agent reasoning 走 A2A。
+run-mcp-hr-assistant:  ## 启 hr_assistant MCP server(:8001,9 tools)
+	cd _1_plugins/hr_assistant && uv run python -m hr_assistant.mcp_main
+
+run-mcp-sre-copilot:  ## 启 sre_copilot 5 个 MCP server(:8020/:8021/:8022/:8027/:8028)
+	cd _1_plugins/sre_copilot && uv run python -m sre_copilot.mcp_main
+
+run-mcp-knowledge:  ## 启 knowledge MCP server(:8030)
+	cd _1_plugins/knowledge && uv run python -m knowledge.mcp_main
 
 # ==================== 清理 ====================
 clean:  ## 清理 Python 缓存

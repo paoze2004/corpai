@@ -25,11 +25,11 @@ RUN uv sync --frozen --no-install-project --no-dev
 
 # 2. 装指定 plugin
 ARG PLUGIN_NAME
-COPY plugins/${PLUGIN_NAME}/pyproject.toml plugins/${PLUGIN_NAME}/uv.lock* /app/plugins/${PLUGIN_NAME}/
+COPY _1_plugins/${PLUGIN_NAME}/pyproject.toml _1_plugins/${PLUGIN_NAME}/uv.lock* /app/_1_plugins/${PLUGIN_NAME}/
 
 # 3. 复制源码
-COPY CorpAI ./CorpAI
-COPY plugins/${PLUGIN_NAME}/src /app/plugins/${PLUGIN_NAME}/src
+COPY _0_CorpAI ./_0_CorpAI
+COPY _1_plugins/${PLUGIN_NAME}/src /app/_1_plugins/${PLUGIN_NAME}/src
 
 RUN uv sync --frozen --no-dev
 

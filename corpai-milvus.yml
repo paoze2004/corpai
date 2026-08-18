@@ -1,4 +1,4 @@
-# corpai-milvus.yml — CorpAI 知识库向量检索(Milvus standalone)
+# corpai-milvus.yml — _0_CorpAI 知识库向量检索(Milvus standalone)
 #
 # 启停:
 #   启: docker compose -f corpai-milvus.yml up -d
@@ -16,8 +16,7 @@
 #   - attu v2.5.7:    与 milvus v2.5.x 配套
 #
 # 端口冲突说明:
-#   Attu 用 8012 而非 8010(原 docker-compose.yml 的设置),因 hr_assistant
-#   的 insurance_mcp 已占 :8010,见 CorpAI/scripts/run_all.py。
+#   Attu 用 8012 而非 8010(避开预留端口)。hr_assistant MCP 现跑 :8001。
 #
 # 数据持久化:
 #   - corpai_etcd    元数据
@@ -98,7 +97,7 @@ services:
     environment:
       MILVUS_URL: standalone:19530
     ports:
-      - "8012:3000"           # 避开 hr_assistant insurance_mcp :8010
+      - "8012:3000"           # hr_assistant MCP 在 :8001,这里避开其他预留端口
     depends_on:
       - standalone
     restart: unless-stopped
