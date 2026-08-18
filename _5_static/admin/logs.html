@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Audit Logs — CorpAI Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfzofotSfH8k2eP7d/?hx8fA==" crossorigin="anonymous"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body x-data="{ role: localStorage.getItem('admin_role') || '?', username: localStorage.getItem('admin_username') || '?', userId: '', pageSize: 20 }">
+
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 py-4 flex items-center gap-4">
+    <h1 class="text-xl text-[#e94560]">🛡️ CorpAI Admin</h1>
+    <span class="text-gray-400 text-sm" x-text="username + ' (' + role + ')'"></span>
+    <span class="flex-1"></span>
+    <button onclick="logout()" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">退出</button>
+    <a href="/admin/index.html" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">← 返回</a>
+</div>
+
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 flex gap-2">
+    <a href="/admin/agents.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Agents</a>
+    <a href="/admin/tools.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Tools</a>
+    <a href="/admin/users.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Users</a>
+    <a href="/admin/logs.html" class="px-4 py-3 text-[#e94560] border-b-2 border-[#e94560]">Logs</a>
+    <a href="/admin/metrics.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Metrics</a>
+</div>
+
+<div class="max-w-7xl mx-auto px-6 py-6">
+    <h2 class="text-[#e94560] mb-4">审计日志</h2>
+
+    <!-- Filter — HTMX 触发 trigger "change delayed" + reload #logs-result -->
+    <div class="bg-[#16213e] border border-[#0f3460] rounded p-4 mb-4"
+         hx-target="#logs-result"
+         hx-swap="innerHTML"
+         hx-trigger="filter-changed from:body"
+         hx-get="/admin/api/fragments/logs">
+        <div class="flex items-end gap-4">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">user_id 过滤</label>
+                <input x-model="userId" type="text" placeholder="(空 = 全部)"
+                       @input.debounce.500ms="$dispatch('filter-changed')"
+                       class="px-3 py-2 bg-[#16213e] border border-[#0f3460] rounded text-[#e0e0e0] text-sm focus:border-[#e94560] outline-none">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">每页</label>
+                <input x-model.number="pageSize" type="number" min="1" max="200" value="20"
+                       @input.debounce.500ms="$dispatch('filter-changed')"
+                       class="w-24 px-3 py-2 bg-[#16213e] border border-[#0f3460] rounded text-[#e0e0e0] text-sm focus:border-[#e94560] outline-none">
+            </div>
+            <div class="flex-1"></div>
+            <button @click="$dispatch('filter-changed')"
+                    class="px-4 py-2 bg-[#e94560] text-[#1a1a2e] font-semibold rounded text-sm hover:opacity-90">
+                查询
+            </button>
+        </div>
+    </div>
+
+    <!-- logs 结果 — 初次 load + filter 触发都换它 -->
+    <div id="logs-result" class="bg-[#16213e] border border-[#0f3460] rounded p-4"
+         hx-get="/admin/api/fragments/logs"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <p class="text-gray-500 text-center py-8">加载中...</p>
+    </div>
+</div>
+
+<script>
+    function logout() {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_role');
+        localStorage.removeItem('admin_username');
+        window.location.href = 'login.html';
+    }
+</script>
+</body>
+</html>

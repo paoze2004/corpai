@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Demo — CorpAI SRE Incident Loop</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .event-line { font-family: ui-monospace, monospace; font-size: 12px; padding: 2px 0; }
+        .event-line .ts { color: #888; }
+        .event-line .agent { display: inline-block; min-width: 100px; color: #e94560; }
+        .event-line .msg { color: #e0e0e0; }
+        .badge-ok { background: #16a34a33; color: #4ade80; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+        .badge-warn { background: #f59e0b33; color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+        .badge-err { background: #ef444433; color: #f87171; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    </style>
+</head>
+<body class="bg-[#1a1a2e] text-[#e0e0e0]" x-data="demoApp()">
+
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 py-4 flex items-center gap-4">
+    <h1 class="text-xl text-[#e94560]">🎬 SRE Incident Demo</h1>
+    <span class="flex-1"></span>
+    <a href="/admin/index.html" class="px-3 py-1 border border-[#0f3460] rounded text-sm">← 返回</a>
+</div>
+
+<div class="max-w-6xl mx-auto px-6 py-6">
+    <h2 class="text-[#e94560] mb-4">触发 Incident</h2>
+
+    <!-- Trigger 卡片 -->
+    <div class="bg-[#16213e] border border-[#0f3460] rounded p-4 mb-4">
+        <div class="grid grid-cols-3 gap-4 mb-4">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Alert 类型</label>
+                <select x-model="alertType" class="w-full px-3 py-2 bg-[#1a1a2e] border border-[#0f3460] rounded text-sm">
+                    <option value="OOMKilled order-api">OOMKilled order-api</option>
+                    <option value="OrderServiceHighErrorRate">OrderServiceHighErrorRate</option>
+                    <option value="OrderServiceHighCPU">OrderServiceHighCPU</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">服务</label>
+                <input x-model="service" type="text" class="w-full px-3 py-2 bg-[#1a1a2e] border border-[#0f3460] rounded text-sm" placeholder="order-api">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">严重度</label>
+                <select x-model="severity" class="w-full px-3 py-2 bg-[#1a1a2e] border border-[#0f3460] rounded text-sm">
+                    <option>P1</option><option>P2</option><option selected>P3</option>
+                </select>
+            </div>
+        </div>
+        <button @click="trigger"
+                :disabled="running"
+                class="px-4 py-2 bg-[#e94560] text-[#1a1a2e] font-semibold rounded disabled:opacity-50">
+            <span x-show="!running">▶ 触发 Incident</span>
+            <span x-show="running">⏳ 运行中…</span>
+        </button>
+        <span x-show="runId" class="ml-4 text-sm text-gray-400">run_id: <code x-text="runId"></code></span>
+    </div>
+
+    <!-- 状态面板 -->
+    <div class="grid grid-cols-4 gap-4 mb-4" x-show="status">
+        <div class="bg-[#16213e] border border-[#0f3460] rounded p-3">
+            <div class="text-xs text-gray-400">Status</div>
+            <div class="text-lg font-bold" :class="{
+                'text-green-400': status === 'completed',
+                'text-yellow-400': status === 'running',
+                'text-red-400': status === 'failed'
+            }" x-text="status"></div>
+        </div>
+        <div class="bg-[#16213e] border border-[#0f3460] rounded p-3">
+            <div class="text-xs text-gray-400">Events</div>
+            <div class="text-lg font-bold" x-text="events.length"></div>
+        </div>
+        <div class="bg-[#16213e] border border-[#0f3460] rounded p-3">
+            <div class="text-xs text-gray-400">Action Plan</div>
+            <div class="text-sm" x-text="actionPlanSummary"></div>
+        </div>
+        <div class="bg-[#16213e] border border-[#0f3460] rounded p-3">
+            <div class="text-xs text-gray-400">Verification</div>
+            <div class="text-sm" x-text="verificationSummary"></div>
+        </div>
+    </div>
+
+    <!-- 实时事件流 -->
+    <h2 class="text-[#e94560] mb-4">实时事件流</h2>
+    <div class="bg-[#0d0d1a] border border-[#0f3460] rounded p-4 font-mono text-xs overflow-auto max-h-[500px]" id="event-log">
+        <template x-for="e in events" :key="e.ts + e.msg">
+            <div class="event-line">
+                <span class="ts" x-text="e.ts"></span>
+                <span class="agent" x-text="e.agent"></span>
+                <span class="msg" x-text="e.msg"></span>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+<script>
+function demoApp() {
+    return {
+        alertType: 'OOMKilled order-api',
+        service: 'order-api',
+        severity: 'P2',
+        running: false,
+        runId: null,
+        status: null,
+        events: [],
+
+        get actionPlanSummary() {
+            if (!this.events.length) return '—';
+            const lastEv = [...this.events].reverse().find(e => e.msg && e.msg.includes('ActionPlan 完成'));
+            return lastEv ? '✓ 已生成' : '...生成中';
+        },
+        get verificationSummary() {
+            const v = [...this.events].reverse().find(e => e.msg && (e.msg.includes('验证通过') || e.msg.includes('验证未通过')));
+            if (!v) return '—';
+            return v.msg.includes('通过') ? '✓ 恢复' : '✗ 需 re-plan';
+        },
+
+        async trigger() {
+            this.running = true;
+            this.events = [];
+            this.status = 'running';
+            try {
+                const r = await fetch('/demo/trigger', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        alert: this.alertType,
+                        service: this.service,
+                        severity: this.severity,
+                    }),
+                });
+                const data = await r.json();
+                this.runId = data.run_id;
+                this.streamEvents();
+            } catch (e) {
+                this.status = 'failed';
+                this.running = false;
+                this.events.push({ts: new Date().toISOString(), agent: 'error', msg: e.message});
+            }
+        },
+
+        async streamEvents() {
+            const r = await fetch(`/demo/stream/${this.runId}`);
+            const reader = r.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, {stream: true});
+                const lines = buf.split('\n\n');
+                buf = lines.pop() || '';
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const ev = JSON.parse(line.slice(6));
+                        this.handleEvent(ev);
+                    } catch (e) {}
+                }
+            }
+        },
+
+        handleEvent(ev) {
+            if (ev.type === 'init') {
+                this.status = ev.status;
+            } else if (ev.type === 'step') {
+                // 推这一波新 events
+                const latest = ev.data.events || [];
+                this.events = latest;
+                this.autoScroll();
+            } else if (ev.type === 'completed') {
+                this.status = 'completed';
+                this.running = false;
+                this.events = ev.final.events;
+            } else if (ev.type === 'failed') {
+                this.status = 'failed';
+                this.running = false;
+            }
+        },
+
+        autoScroll() {
+            this.$nextTick(() => {
+                const el = document.getElementById('event-log');
+                if (el) el.scrollTop = el.scrollHeight;
+            });
+        },
+    };
+}
+</script>
+</body>
+</html>

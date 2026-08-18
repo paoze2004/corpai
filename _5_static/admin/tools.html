@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Tools — CorpAI Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfzofotSfH8k2eP7d/?hx8fA==" crossorigin="anonymous"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body x-data="{ role: localStorage.getItem('admin_role') || '?', username: localStorage.getItem('admin_username') || '?' }">
+
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 py-4 flex items-center gap-4">
+    <h1 class="text-xl text-[#e94560]">🛡️ CorpAI Admin</h1>
+    <span class="text-gray-400 text-sm" x-text="username + ' (' + role + ')'"></span>
+    <span class="flex-1"></span>
+    <button onclick="logout()" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">退出</button>
+    <a href="/admin/index.html" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">← 返回</a>
+</div>
+
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 flex gap-2">
+    <a href="/admin/agents.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Agents</a>
+    <a href="/admin/tools.html" class="px-4 py-3 text-[#e94560] border-b-2 border-[#e94560]">Tools</a>
+    <a href="/admin/users.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Users</a>
+    <a href="/admin/logs.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Logs</a>
+    <a href="/admin/metrics.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Metrics</a>
+</div>
+
+<div class="max-w-6xl mx-auto px-6 py-6">
+    <h2 class="text-[#e94560] mb-4">MCP Tools</h2>
+    <div class="bg-[#16213e] border border-[#0f3460] rounded p-4">
+        <table class="w-full text-sm"
+               hx-get="/admin/api/fragments/tools"
+               hx-trigger="load"
+               hx-target="#tools-tbody"
+               hx-swap="innerHTML">
+            <thead>
+                <tr class="border-b border-[#0f3460] text-[#e94560]">
+                    <th class="px-3 py-2 text-left">名称</th>
+                    <th class="px-3 py-2 text-left">版本</th>
+                    <th class="px-3 py-2 text-left">MCP 端点</th>
+                    <th class="px-3 py-2 text-left">标签</th>
+                    <th class="px-3 py-2 text-left">描述</th>
+                </tr>
+            </thead>
+            <tbody id="tools-tbody">
+                <tr><td colspan="5" class="px-3 py-8 text-center text-gray-500">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function logout() {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_role');
+        localStorage.removeItem('admin_username');
+        window.location.href = 'login.html';
+    }
+</script>
+</body>
+</html>

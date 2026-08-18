@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Metrics — CorpAI Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfzofotSfH8k2eP7d/?hx8fA==" crossorigin="anonymous"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body x-data="{ role: localStorage.getItem('admin_role') || '?', username: localStorage.getItem('admin_username') || '?' }">
+
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 py-4 flex items-center gap-4">
+    <h1 class="text-xl text-[#e94560]">🛡️ CorpAI Admin</h1>
+    <span class="text-gray-400 text-sm" x-text="username + ' (' + role + ')'"></span>
+    <span class="flex-1"></span>
+    <button onclick="logout()" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">退出</button>
+    <a href="/admin/index.html" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">← 返回</a>
+</div>
+
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 flex gap-2">
+    <a href="/admin/agents.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Agents</a>
+    <a href="/admin/tools.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Tools</a>
+    <a href="/admin/users.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Users</a>
+    <a href="/admin/logs.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Logs</a>
+    <a href="/admin/metrics.html" class="px-4 py-3 text-[#e94560] border-b-2 border-[#e94560]">Metrics</a>
+</div>
+
+<div class="max-w-6xl mx-auto px-6 py-6">
+    <h2 class="text-[#e94560] mb-4">平台指标</h2>
+
+    <div class="bg-[#16213e] border border-[#0f3460] rounded p-4 mb-4">
+        <h3 class="mb-3 text-[#e94560]">Prometheus exposition <span class="text-gray-500 text-xs font-normal">(原始文本 · 后端 <code class="text-xs">/metrics</code> 端点)</span></h3>
+        <div id="metrics"
+             hx-get="/admin/api/fragments/metrics"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-gray-500 py-4">加载中...</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-[#16213e] border border-[#0f3460] rounded p-4">
+            <h3 class="mb-3 text-[#e94560]">用户角色分布</h3>
+            <div id="role-dist"
+                 hx-get="/admin/api/fragments/role-dist"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <p class="text-gray-500 py-4">加载中...</p>
+            </div>
+        </div>
+        <div class="bg-[#16213e] border border-[#0f3460] rounded p-4">
+            <h3 class="mb-3 text-[#e94560]">近期审计结果分布 <span class="text-gray-500 text-xs font-normal">(近 100 条)</span></h3>
+            <div id="audit-dist"
+                 hx-get="/admin/api/fragments/audit-dist"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <p class="text-gray-500 py-4">加载中...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function logout() {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_role');
+        localStorage.removeItem('admin_username');
+        window.location.href = 'login.html';
+    }
+</script>
+</body>
+</html>

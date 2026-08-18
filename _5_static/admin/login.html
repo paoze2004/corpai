@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin 登录 — CorpAI</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+    <!-- HTMX 2.x:服务端交互(替代 fetch + DOM 操作) -->
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfzofotSfH8k2eP7d/?hx8fA==" crossorigin="anonymous"></script>
+    <!-- Alpine.js 3.x:轻量 reactive 状态(本页面只用来切 alert 类型) -->
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <!-- Tailwind via CDN:零 build 的 utility CSS(配合 admin.css 主题) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body x-data="{ alertType: '', alertMsg: '' }">
+<div class="min-h-screen flex items-center justify-center">
+    <div class="login-box w-96">
+        <h1 class="text-2xl text-[#e94560] mb-6">🛡️ CorpAI Admin</h1>
+
+        <!-- Alert:HTMX response 触发 x-data 里的 alertType/alertMsg -->
+        <div x-show="alertMsg" x-cloak
+             :class="alertType === 'success' ? 'alert-success' : 'alert-error'"
+             class="alert mb-4"
+             x-text="alertMsg"></div>
+
+        <!-- 登录表单 — HTMX 提交,响应 4xx → 显示错误;2xx + JWT → 跳首页 -->
+        <form x-data="{ u: '', p: '' }"
+              hx-post="/admin/api/login"
+              hx-vals='js:{username: u, password: p}'
+              hx-ext="json-enc"
+              hx-trigger="submit"
+              hx-target="this"
+              hx-swap="none"
+              @htmx:response-error="alertType='error'; alertMsg=event.detail.xhr.responseText || '登录失败'"
+              @htmx:after-request="if(event.detail.successful){ try{ const b=JSON.parse(event.detail.xhr.response); localStorage.setItem('admin_token', b.access_token); localStorage.setItem('admin_role', b.role); localStorage.setItem('admin_username', b.username); window.location.href='/admin/index.html'; }catch(e){alertMsg='解析响应失败:'+e;} }">
+            <div class="mb-4">
+                <label class="block text-sm text-gray-300 mb-1">用户名</label>
+                <input x-model="u" type="text" placeholder="admin"
+                       autocomplete="username" required
+                       class="w-full px-3 py-2 bg-[#16213e] border border-[#0f3460] rounded text-[#e0e0e0] focus:border-[#e94560] outline-none">
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm text-gray-300 mb-1">密码</label>
+                <input x-model="p" type="password"
+                       autocomplete="current-password" required
+                       class="w-full px-3 py-2 bg-[#16213e] border border-[#0f3460] rounded text-[#e0e0e0] focus:border-[#e94560] outline-none">
+            </div>
+            <button type="submit"
+                    class="w-full bg-[#e94560] text-[#1a1a2e] font-semibold py-2 rounded hover:opacity-90 transition">
+                登 录
+            </button>
+        </form>
+
+        <p class="text-gray-500 text-xs text-center mt-4">
+            首次部署用 <code class="text-gray-400">uv run python scripts/bootstrap_super_admin.py admin</code> 创建。
+        </p>
+    </div>
+</div>
+
+<!-- 已登录检测 — 直接跳走 -->
+<script>
+    if (localStorage.getItem('admin_token')) {
+        fetch('/admin/api/users', {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('admin_token') }
+        }).then(r => { if (r.ok) window.location.href = 'index.html'; });
+    }
+</script>
+</body>
+</html>

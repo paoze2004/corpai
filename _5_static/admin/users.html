@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Users — CorpAI Admin</title>
+    <link rel="stylesheet" href="/admin/admin.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfzofotSfH8k2eP7d/?hx8fA==" crossorigin="anonymous"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body x-data="{ role: localStorage.getItem('admin_role') || '?', username: localStorage.getItem('admin_username') || '?' }">
+
+<!-- Header -->
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 py-4 flex items-center gap-4">
+    <h1 class="text-xl text-[#e94560]">🛡️ CorpAI Admin</h1>
+    <span class="text-gray-400 text-sm" x-text="username + ' (' + role + ')'"></span>
+    <span class="flex-1"></span>
+    <button onclick="logout()" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">退出</button>
+    <a href="/admin/index.html" class="px-3 py-1 border border-[#0f3460] rounded text-sm text-[#e0e0e0] hover:bg-[#0f3460]">← 返回</a>
+</div>
+
+<!-- Nav -->
+<div class="bg-[#16213e] border-b border-[#0f3460] px-6 flex gap-2">
+    <a href="/admin/agents.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Agents</a>
+    <a href="/admin/tools.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Tools</a>
+    <a href="/admin/users.html" class="px-4 py-3 text-[#e94560] border-b-2 border-[#e94560]">Users</a>
+    <a href="/admin/logs.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Logs</a>
+    <a href="/admin/metrics.html" class="px-4 py-3 text-gray-400 hover:text-[#e0e0e0]">Metrics</a>
+</div>
+
+<!-- Content -->
+<div class="max-w-5xl mx-auto px-6 py-6">
+    <h2 class="text-[#e94560] mb-4">用户管理</h2>
+    <div class="bg-[#16213e] border border-[#0f3460] rounded p-4">
+
+        <!-- 用户表格 — thead 写死,tbody 由 HTMX 加载(/admin/api/fragments/users 返 <tr>...<tr>) -->
+        <table class="w-full text-sm" x-data="{
+                loading: true,
+                init() { this.$root.addEventListener('htmx:afterRequest', e => {
+                    if (e.detail.elt === this.$root) this.loading = false;
+                }); }
+            }"
+            hx-get="/admin/api/fragments/users"
+            hx-trigger="load"
+            hx-swap="innerHTML"
+            hx-target="#users-tbody">
+            <thead>
+                <tr class="border-b border-[#0f3460] text-[#e94560]">
+                    <th class="px-3 py-2 text-left">用户名</th>
+                    <th class="px-3 py-2 text-left">角色</th>
+                    <th class="px-3 py-2 text-left">状态</th>
+                    <th class="px-3 py-2 text-left">最后登录</th>
+                    <th class="px-3 py-2 text-left">操作</th>
+                </tr>
+            </thead>
+            <tbody id="users-tbody">
+                <tr><td colspan="5" class="px-3 py-8 text-center text-gray-500">
+                    <span x-show="loading">加载中...</span>
+                    <span x-show="!loading">无用户</span>
+                </td></tr>
+            </tbody>
+        </table>
+
+        <p class="text-gray-500 text-xs mt-3"
+           x-text="role === 'super_admin' ? '你是 super_admin — 可编辑角色。' : '需要 super_admin 权限才能改角色。'"></p>
+    </div>
+</div>
+
+<script>
+    function logout() {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_role');
+        localStorage.removeItem('admin_username');
+        window.location.href = 'login.html';
+    }
+</script>
+</body>
+</html>
